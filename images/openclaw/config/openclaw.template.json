@@ -1,0 +1,32 @@
+{
+  "// PerkOS baseline": "Templated by perkos-entrypoint.sh on container start. __VARS__ get replaced from env. BYOK can override the provider at runtime via OPENCLAW_PROVIDER_OVERRIDE=anthropic|openai|openrouter + the matching *_API_KEY var.",
+  "agent": {
+    "name": "__PERKOS_AGENT_NAME__",
+    "id": "__PERKOS_AGENT_ID__"
+  },
+  "models": {
+    "providers": {
+      "ollama": {
+        "baseUrl": "__PERKOS_LLM_BASE_URL__",
+        "apiKey": "__PERKOS_LLM_API_KEY__",
+        "api": "ollama",
+        "headers": {
+          "x-agent-id": "__PERKOS_AGENT_ID__"
+        },
+        "models": [
+          { "id": "kimi-k2.6:cloud", "name": "Kimi K2.6 Cloud", "contextWindow": 128000 },
+          { "id": "qwen2.5:7b", "name": "Qwen 2.5 7B", "contextWindow": 32768 },
+          { "id": "qwen2.5:14b", "name": "Qwen 2.5 14B", "contextWindow": 32768 }
+        ]
+      }
+    },
+    "defaultModel": "__PERKOS_LLM_DEFAULT_MODEL__"
+  },
+  "gateway": {
+    "bind": "lan",
+    "auth": {
+      "enabled": true,
+      "apiKey": "__PERKOS_GATEWAY_API_KEY__"
+    }
+  }
+}

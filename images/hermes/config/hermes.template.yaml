@@ -1,0 +1,19 @@
+# PerkOS baseline for Hermes
+# Templated by perkos-entrypoint.sh on container start using envsubst.
+# BYOK overrides at runtime via env: HERMES_PROVIDER=openai|anthropic|... + matching *_API_KEY.
+
+provider:
+  name: openai
+  base_url: ${PERKOS_LLM_BASE_URL}
+  api_key_env: PERKOS_LLM_API_KEY
+
+model:
+  default: ${PERKOS_LLM_DEFAULT_MODEL}
+
+agent:
+  name: ${PERKOS_AGENT_NAME}
+  id: ${PERKOS_AGENT_ID}
+
+secrets:
+  PERKOS_LLM_API_KEY: ${PERKOS_LLM_API_KEY}
+  PERKOS_AGENT_ID: ${PERKOS_AGENT_ID}
