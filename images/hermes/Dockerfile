@@ -3,11 +3,23 @@
 # Hermes + PerkOS wrapper.
 #
 # Layers on top of the official nousresearch/hermes-agent image:
-#   1. Pre-installs the hermes-perkos plugin (matches the PerkOS-A2A bridge)
-#   2. Seeds ~/.hermes/profiles/<name>/config.yaml from env vars on boot
+#   1. Renders /opt/data/config.yaml from PERKOS_* env vars at boot
+#   2. Bakes the PerkOS Assistant content (SOUL + runbook) into the image
+#   3. Bakes the perkos-platform-tools skill (documentation-only at v1)
+#   4. Delegates the actual `hermes` start to upstream's entrypoint, which
+#      drops to the `hermes` user, sources the venv, and execs `hermes`
 #
-# Like the OpenClaw image, the PerkOS-A2A bridge is a sidecar container in
-# the ECS task — not embedded here.
+# Upstream invariants we now respect (broke in v1, fixed here):
+#   - HERMES_HOME = /opt/data (NOT /root/.hermes)
+#   - Binary is `hermes` at /opt/hermes/.venv/bin/hermes (NOT `hermes-agent`)
+#   - Skills auto-discovered from $HERMES_HOME/skills/
+#   - Upstream entrypoint /opt/hermes/docker/entrypoint.sh does user-drop +
+#     venv activation; we delegate to it instead of replacing it
+#
+# The perkos-a2a bridge (chat.perkos.xyz + transport.perkos.xyz) is a
+# separate sidecar process — npm package @perkos/perkos-a2a, runs via
+# `perkos-a2a-agent` CLI. NOT bundled into this image; the compose file
+# at deploy/perkos-assistant/ adds it as its own service (follow-up PR).
 
 ARG HERMES_TAG=latest
 FROM nousresearch/hermes-agent:${HERMES_TAG}
@@ -22,49 +34,39 @@ RUN apt-get update && \
       gettext-base ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
-# hermes-perkos plugin from the @perkos/perkos-a2a npm package — it ships
-# a Python entrypoint under dist/hermes-plugin.py that Hermes loads.
-# Pinned via PERKOS_A2A_VERSION so we can roll forward in CI.
-ARG PERKOS_A2A_VERSION=0.9.0
-RUN pip install --no-cache-dir "perkos-a2a==${PERKOS_A2A_VERSION}" || \
-    echo "perkos-a2a not on PyPI yet; skipping (will mount at runtime)"
-
 COPY config/hermes.template.yaml /opt/perkos/hermes.template.yaml
 COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
 RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh
 
 # PerkOS Assistant content — SOUL (persona) + runbook (FAQ knowledge).
 # Used only when the container is provisioned as the platform identity
-# "PerkOS-Assistant" (kind: "platform" on /api/agents/launch). Regular
-# user-launched agents ignore /opt/perkos-assistant/ entirely; baking
+# "PerkOS-Assistant". Regular user-launched agents ignore this dir; baking
 # the ~50 KB of markdown into every image keeps the deploy uniform.
-#
-# Source of truth for these files is PerkOS/docs/perkos-assistant/ in
-# the main miniapp repo. See perkos-assistant/README.md for the
-# manual sync convention (will become a CI sync action later).
 COPY perkos-assistant /opt/perkos-assistant
 
-# perkos-platform-tools Hermes skill — currently documentation-only
-# (workflows the LLM follows when the runbook applies). Python tool
-# handlers land in a follow-up PR after we validate the bootstrap.
-# Hermes auto-discovers skills under ~/.hermes/skills/ at startup.
-COPY skills/perkos-platform-tools /root/.hermes/skills/perkos-platform-tools
+# perkos-platform-tools Hermes skill — documentation-only at v1. Hermes
+# auto-discovers skills under $HERMES_HOME/skills/ at startup. The
+# upstream entrypoint creates $HERMES_HOME/skills/ as the hermes user;
+# we copy our skill in with permissive ownership so the user can read it.
+COPY skills/perkos-platform-tools /opt/perkos-skills/perkos-platform-tools
+# The actual symlink/copy into $HERMES_HOME/skills/ happens in
+# perkos-entrypoint.sh after upstream has set up HERMES_HOME with the
+# right ownership.
 
 LABEL org.opencontainers.image.title="PerkOS-Hermes" \
-      org.opencontainers.image.description="Hermes agent with PerkOS-LLM provider + ECS-ready config" \
+      org.opencontainers.image.description="Hermes agent + PerkOS LLM provider + Assistant content baked in" \
       org.opencontainers.image.source="https://github.com/PerkOS-xyz/Perkos-Containers" \
       perkos.runtime="hermes" \
       perkos.upstream-tag="${HERMES_TAG}"
 
-# Defaults — overridable at runtime
+# Defaults — overridable at runtime via -e.
 ENV PERKOS_LLM_BASE_URL=https://api.llm.perkos.xyz/v1 \
-    PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud \
-    HERMES_PROFILE_NAME=default
+    PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud
 
-EXPOSE 8642
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD curl -fsS http://127.0.0.1:8642/health >/dev/null || exit 1
-
+# Our entrypoint runs FIRST (writes config, copies skill into HERMES_HOME),
+# then exec's the upstream entrypoint which handles user-drop + venv +
+# starts the `hermes` binary.
 ENTRYPOINT ["perkos-entrypoint.sh"]
-CMD ["hermes-agent", "serve", "--profile", "default"]
+# No CMD — upstream entrypoint's default behavior takes over once we
+# delegate. Override via `docker compose run perkos-assistant hermes <cmd>`
+# if you need to invoke a specific hermes subcommand.
