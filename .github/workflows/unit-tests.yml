@@ -19,3 +19,12 @@ jobs:
 
       - name: Run perkos_tools unit tests
         run: ./tests/perkos-tools/run.sh
+
+  hibernation-scripts-bash:
+    name: snapshot.sh + restore.sh (bash)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run hibernation-script unit tests
+        run: ./tests/hibernation-scripts/run.sh

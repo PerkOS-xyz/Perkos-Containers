@@ -28,15 +28,22 @@ ARG HERMES_TAG
 
 USER root
 
-# envsubst + ca-certs for HTTPS to the model providers.
+# envsubst + ca-certs for HTTPS to the model providers, plus the AWS
+# CLI for hibernation snapshot/restore to S3. awscli pulls in ~30 MB
+# of Python deps but avoids us having to ship boto3 separately in the
+# venv — the snapshot/restore scripts are bash, so the CLI fits.
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-      gettext-base ca-certificates && \
+      gettext-base ca-certificates awscli && \
     rm -rf /var/lib/apt/lists/*
 
 COPY config/hermes.template.yaml /opt/perkos/hermes.template.yaml
 COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
-RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh
+COPY snapshot.sh /usr/local/bin/perkos-snapshot.sh
+COPY restore.sh /usr/local/bin/perkos-restore.sh
+RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh \
+              /usr/local/bin/perkos-snapshot.sh \
+              /usr/local/bin/perkos-restore.sh
 
 # PerkOS Assistant content — SOUL (persona) + runbook (FAQ knowledge).
 # Used only when the container is provisioned as the platform identity
