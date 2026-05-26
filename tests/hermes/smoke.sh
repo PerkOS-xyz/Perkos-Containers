@@ -141,6 +141,34 @@ else
   fail "references/examples.md missing from installed skill"
 fi
 
+# Hibernation snapshot/restore scripts are in place.
+if docker exec "$CONTAINER" test -x /usr/local/bin/perkos-snapshot.sh; then
+  pass "perkos-snapshot.sh installed + executable"
+else
+  fail "perkos-snapshot.sh missing or not executable"
+fi
+if docker exec "$CONTAINER" test -x /usr/local/bin/perkos-restore.sh; then
+  pass "perkos-restore.sh installed + executable"
+else
+  fail "perkos-restore.sh missing or not executable"
+fi
+
+# Confirm aws-cli is on PATH (snapshot/restore need it).
+if docker exec "$CONTAINER" aws --version >/dev/null 2>&1; then
+  pass "aws CLI present (hibernation can call S3)"
+else
+  fail "aws CLI missing — hibernation snapshot/restore will fail at runtime"
+fi
+
+# No-op contract: with no S3 URI env, snapshot must skip cleanly.
+if docker exec "$CONTAINER" sh -c \
+    "env -u PERKOS_HIBERNATION_S3_URI HERMES_HOME=/opt/data /usr/local/bin/perkos-snapshot.sh 2>/dev/null" \
+    | grep -q '"skipped": true'; then
+  pass "snapshot.sh no-op when PERKOS_HIBERNATION_S3_URI unset"
+else
+  fail "snapshot.sh should skip with JSON status when S3 URI is unset"
+fi
+
 # Confirm the script fails fast (exit 4) when the bridge auth env var is
 # absent — the contract our SKILL.md promises to the LLM.
 if docker exec "$CONTAINER" sh -c "unset A2A_BRIDGE_AUTH_SECRET PERKOS_CONV_ID; python3 /opt/data/skills/perkos-platform-tools/scripts/perkos_tools.py call listMyAgents '{}' --conv-id smoke 2>&1; echo exit=\$?" | grep -q "exit=4"; then
