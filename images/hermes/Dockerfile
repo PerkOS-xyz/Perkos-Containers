@@ -33,6 +33,23 @@ COPY config/hermes.template.yaml /opt/perkos/hermes.template.yaml
 COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
 RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh
 
+# PerkOS Assistant content — SOUL (persona) + runbook (FAQ knowledge).
+# Used only when the container is provisioned as the platform identity
+# "PerkOS-Assistant" (kind: "platform" on /api/agents/launch). Regular
+# user-launched agents ignore /opt/perkos-assistant/ entirely; baking
+# the ~50 KB of markdown into every image keeps the deploy uniform.
+#
+# Source of truth for these files is PerkOS/docs/perkos-assistant/ in
+# the main miniapp repo. See perkos-assistant/README.md for the
+# manual sync convention (will become a CI sync action later).
+COPY perkos-assistant /opt/perkos-assistant
+
+# perkos-platform-tools Hermes skill — currently documentation-only
+# (workflows the LLM follows when the runbook applies). Python tool
+# handlers land in a follow-up PR after we validate the bootstrap.
+# Hermes auto-discovers skills under ~/.hermes/skills/ at startup.
+COPY skills/perkos-platform-tools /root/.hermes/skills/perkos-platform-tools
+
 LABEL org.opencontainers.image.title="PerkOS-Hermes" \
       org.opencontainers.image.description="Hermes agent with PerkOS-LLM provider + ECS-ready config" \
       org.opencontainers.image.source="https://github.com/PerkOS-xyz/Perkos-Containers" \
