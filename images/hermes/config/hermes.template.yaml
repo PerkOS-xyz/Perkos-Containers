@@ -1,19 +1,32 @@
-# PerkOS baseline for Hermes
+# PerkOS baseline config for Hermes upstream.
+#
 # Templated by perkos-entrypoint.sh on container start using envsubst.
-# BYOK overrides at runtime via env: HERMES_PROVIDER=openai|anthropic|... + matching *_API_KEY.
-
-provider:
-  name: openai
-  base_url: ${PERKOS_LLM_BASE_URL}
-  api_key_env: PERKOS_LLM_API_KEY
+# Renders to $HERMES_HOME/config.yaml (default /opt/data/config.yaml).
+#
+# Format matches the upstream cli-config.yaml.example schema. Override
+# any field by setting env vars on the container; the entrypoint
+# re-renders this file on every boot, so the env is the source of truth.
 
 model:
+  # Default model. "kimi-k2.6:cloud" is what the PerkOS LLM gateway hosts.
   default: ${PERKOS_LLM_DEFAULT_MODEL}
 
-agent:
-  name: ${PERKOS_AGENT_NAME}
-  id: ${PERKOS_AGENT_ID}
+  # "custom" tells Hermes the endpoint is OpenAI-compatible but not one
+  # of the named providers it has built-in detection for (OpenRouter,
+  # Anthropic, etc.). Required since api.llm.perkos.xyz is our own
+  # gateway.
+  provider: custom
 
-secrets:
-  PERKOS_LLM_API_KEY: ${PERKOS_LLM_API_KEY}
-  PERKOS_AGENT_ID: ${PERKOS_AGENT_ID}
+  # Where the gateway lives. The Assistant runs on the same VPS as the
+  # gateway, so this resolves to a loopback HTTPS hop via Caddy.
+  base_url: ${PERKOS_LLM_BASE_URL}
+
+  # Tell Hermes to read the API key from this env var name. The actual
+  # key value lives in PERKOS_LLM_API_KEY (set on the container env);
+  # we don't bake it into this file so the rendered config can be
+  # logged/inspected without leaking secrets.
+  api_key_env: PERKOS_LLM_API_KEY
+
+agent:
+  id: ${PERKOS_AGENT_ID}
+  name: ${PERKOS_AGENT_NAME}

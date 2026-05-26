@@ -22,6 +22,11 @@ services:
     image: perkos-assistant-hermes:local
     container_name: perkos-assistant
     restart: unless-stopped
+    # Long-running foreground gateway — the mode upstream documents for
+    # Docker. Hermes' bare `hermes` invocation drops into an interactive
+    # REPL that exits when stdin is not a TTY, so we explicitly pick the
+    # daemon subcommand here.
+    command: ["gateway", "run"]
     # No port published — the Assistant talks OUTBOUND only (to
     # chat.perkos.xyz + transport.perkos.xyz + api.llm.perkos.xyz).
     # The /health check is internal; ops can `docker exec` if needed.
@@ -66,9 +71,15 @@ services:
       # straightforward.
       - /var/perkos-assistant/hermes:/root/.hermes
 
+    # Process-level healthcheck — gateway mode doesn't expose an HTTP port
+    # without an explicit channel configured (no Telegram/Discord/etc. yet).
+    # Once the perkos-a2a sidecar lands and the bridge publishes a /health
+    # endpoint, switch back to an HTTP check. For now, "is the python
+    # process for hermes still alive" is the most honest signal we can
+    # give the orchestrator.
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8642/health"]
+      test: ["CMD-SHELL", "pgrep -f 'hermes/.venv/bin/hermes' >/dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      start_period: 60s
