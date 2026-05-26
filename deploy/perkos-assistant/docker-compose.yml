@@ -1,0 +1,74 @@
+# PerkOS Assistant — production compose for the LLM VPS (46.225.62.30).
+#
+# Single Hermes container, locally-built from ../../images/hermes/. We
+# build on the VPS instead of pulling from ECR because:
+#   - the LLM VPS doesn't have AWS CLI or ECR auth configured
+#   - building takes ~2 min on a Hetzner CX line and only happens on
+#     image bumps, so the cost is negligible
+#   - one less moving piece (no ECR credential rotation to track)
+#
+# The .env file (one directory up: /opt/perkos-assistant/.env) holds
+# the runtime secrets — relayApiKey from /api/agents/launch?kind=platform,
+# the PerkOS LLM admin token, etc. See .env.example for the schema.
+
+services:
+  perkos-assistant:
+    build:
+      context: ../../images/hermes
+      dockerfile: Dockerfile
+      args:
+        HERMES_TAG: latest
+        PERKOS_A2A_VERSION: "0.9.0"
+    image: perkos-assistant-hermes:local
+    container_name: perkos-assistant
+    restart: unless-stopped
+    # No port published — the Assistant talks OUTBOUND only (to
+    # chat.perkos.xyz + transport.perkos.xyz + api.llm.perkos.xyz).
+    # The /health check is internal; ops can `docker exec` if needed.
+    environment:
+      # Identity — minted at provision time by /api/agents/launch?kind=platform.
+      # Keep these stable across rebuilds; if any change, the Assistant
+      # loses its chat history (history lives in /var/perkos/hermes/, see
+      # the volume below).
+      PERKOS_AGENT_ID: ${PERKOS_AGENT_ID}
+      PERKOS_AGENT_NAME: PerkOS-Assistant
+
+      # LLM gateway. The Assistant runs on the same VPS as the gateway,
+      # so it can reach it on localhost — but use the public URL so the
+      # config stays portable.
+      PERKOS_LLM_BASE_URL: ${PERKOS_LLM_BASE_URL:-https://api.llm.perkos.xyz/v1}
+      PERKOS_LLM_DEFAULT_MODEL: ${PERKOS_LLM_DEFAULT_MODEL:-kimi-k2.6:cloud}
+      PERKOS_LLM_API_KEY: ${PERKOS_LLM_API_KEY}
+
+      # Profile name. Hermes loads ~/.hermes/profiles/${HERMES_PROFILE_NAME}/
+      # — keep "default" unless you want the Assistant to have multiple
+      # parallel personas on the same container.
+      HERMES_PROFILE_NAME: default
+
+      # PerkOS-A2A bridge config. The bridge module reads these to open
+      # WebSocket to chat.perkos.xyz + transport.perkos.xyz as the
+      # PerkOS-Assistant agent identity.
+      PERKOS_RELAY_API_KEY: ${PERKOS_RELAY_API_KEY}
+      PERKOS_CHAT_URL: ${PERKOS_CHAT_URL:-wss://chat.perkos.xyz/chat}
+      PERKOS_TRANSPORT_URL: ${PERKOS_TRANSPORT_URL:-wss://transport.perkos.xyz/a2a}
+
+      # Future (v2 — when user-scoped tools land): Firebase Admin SDK
+      # credentials so the skill can derive walletAddress from convId
+      # via Firestore. Left commented for the foundation deploy.
+      # FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      # FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
+      # FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
+
+    volumes:
+      # Hermes state lives here so it survives container rebuilds.
+      # ~/.hermes inside the container is /root/.hermes; bind-mount onto
+      # /var/perkos-assistant/hermes/ on the host so rsync/backups are
+      # straightforward.
+      - /var/perkos-assistant/hermes:/root/.hermes
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8642/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

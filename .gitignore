@@ -2,3 +2,6 @@
 .env
 .env.local
 *.tsbuildinfo
+
+# Local secrets for the Assistant deploy
+deploy/perkos-assistant/.env
