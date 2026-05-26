@@ -72,14 +72,72 @@ services:
       - /var/perkos-assistant/hermes:/root/.hermes
 
     # Process-level healthcheck — gateway mode doesn't expose an HTTP port
-    # without an explicit channel configured (no Telegram/Discord/etc. yet).
-    # Once the perkos-a2a sidecar lands and the bridge publishes a /health
-    # endpoint, switch back to an HTTP check. For now, "is the python
-    # process for hermes still alive" is the most honest signal we can
-    # give the orchestrator.
+    # by itself. The bridge sidecar reaches into Hermes via its own HTTP
+    # API once configured; we still keep this signal honest with `pgrep`.
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'hermes/.venv/bin/hermes' >/dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 60s
+
+  # PerkOS-A2A bridge sidecar — the wire-level connection from the
+  # Assistant to chat.perkos.xyz (user ↔ agent messages) and
+  # transport.perkos.xyz (agent ↔ agent tasks). Runs perkos-a2a-agent
+  # (npm @perkos/perkos-a2a) as a separate Node process. Talks to the
+  # Hermes runtime on the compose network over its DNS name.
+  perkos-a2a-bridge:
+    build:
+      context: ../../images/perkos-a2a-bridge
+      dockerfile: Dockerfile
+      args:
+        PERKOS_A2A_VERSION: "0.9.2"
+    image: perkos-assistant-bridge:local
+    container_name: perkos-assistant-bridge
+    restart: unless-stopped
+    depends_on:
+      perkos-assistant:
+        condition: service_healthy
+    environment:
+      # Identity — same agent name + relayApiKey as the Hermes container.
+      # chat.perkos.xyz authenticates the bridge using this key against
+      # Firestore /agents/{name}.
+      A2A_AGENT_NAME: PerkOS-Assistant
+      A2A_RELAY_API_KEY: ${PERKOS_RELAY_API_KEY}
+
+      # Where to reach Hermes on the compose network. perkos-assistant
+      # listens on 8642 by default (upstream Hermes default port).
+      HERMES_API_URL: http://perkos-assistant:8642
+      HERMES_WORKSPACE_URL: http://perkos-assistant:8642
+
+      # Runtime kind — tells the bridge which native API shape to use
+      # when delivering inbound frames into the runtime container.
+      A2A_RUNTIME: hermes-api
+
+      # Relay (transport.perkos.xyz) — enabled so the Assistant can
+      # receive A2A tasks from other agents. Defaults from the Dockerfile
+      # are fine; override only if pointing at a staging relay.
+      A2A_RELAY_ENABLED: "true"
+      A2A_RELAY_URL: ${PERKOS_TRANSPORT_URL:-wss://transport.perkos.xyz/a2a}
+
+      # Chat (chat.perkos.xyz) — enabled so the Assistant receives
+      # `chat_deliver` frames when users send messages through the
+      # miniapp's ChatbotPanel. The bridge handles WS auth using the
+      # same relayApiKey.
+      A2A_CHAT_ENABLED: "true"
+      A2A_CHAT_URL: ${PERKOS_CHAT_URL:-wss://chat.perkos.xyz/chat}
+      A2A_CHAT_API_KEY: ${PERKOS_RELAY_API_KEY}
+
+    # Process-level healthcheck — in NAT mode the bridge skips its A2A
+    # HTTP server entirely and uses the relay for all transport (logs
+    # "Behind NAT, using relay for bidirectional communication"). Only
+    # the local /chat/reply listener on :5060 stays bound, but that's an
+    # implementation detail not a contract. Process aliveness is the
+    # most honest signal we can give the orchestrator until the bridge
+    # publishes a real /health endpoint.
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f perkos-a2a-bridge >/dev/null || pgrep -f bridge-agent >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s

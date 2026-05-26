@@ -19,7 +19,7 @@ env:
   # Upstream tags to wrap. Bumping these picks up upstream releases.
   OPENCLAW_TAG: latest
   HERMES_TAG: latest
-  PERKOS_A2A_VERSION: 0.9.0
+  PERKOS_A2A_VERSION: 0.9.2
 
 jobs:
   build-openclaw:
@@ -113,3 +113,53 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/perkos-hermes:${{ steps.tags.outputs.version }}
             ${{ env.ECR_REGISTRY }}/perkos-hermes:latest
+
+  build-perkos-a2a-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          DATE="$(date -u +%Y.%m.%d)"
+          SHA="${GITHUB_SHA::7}"
+          SUFFIX="${{ github.event.inputs.tag_suffix }}"
+          [ -n "$SUFFIX" ] && SUFFIX="-${SUFFIX}"
+          echo "version=v${PERKOS_A2A_VERSION}-perkos.${DATE}.${SHA}${SUFFIX}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build perkos-a2a-bridge (load for testing)
+        uses: docker/build-push-action@v6
+        with:
+          context: images/perkos-a2a-bridge
+          load: true
+          platforms: linux/amd64
+          build-args: |
+            PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
+          tags: perkos-a2a-bridge:test
+
+      - name: Smoke test perkos-a2a-bridge
+        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test
+
+      - name: Build + push perkos-a2a-bridge
+        uses: docker/build-push-action@v6
+        with:
+          context: images/perkos-a2a-bridge
+          push: true
+          platforms: linux/amd64
+          build-args: |
+            PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
+          tags: |
+            ${{ env.ECR_REGISTRY }}/perkos-a2a-bridge:${{ steps.tags.outputs.version }}
+            ${{ env.ECR_REGISTRY }}/perkos-a2a-bridge:latest
