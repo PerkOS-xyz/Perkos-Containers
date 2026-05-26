@@ -1,0 +1,21 @@
+name: Unit tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  perkos-tools-python:
+    name: perkos_tools.py (Python stdlib)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Run perkos_tools unit tests
+        run: ./tests/perkos-tools/run.sh

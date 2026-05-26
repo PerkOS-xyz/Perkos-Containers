@@ -123,6 +123,32 @@ else
   fail "SKILL.md missing from installed skill"
 fi
 
+if docker exec "$CONTAINER" test -x /opt/data/skills/perkos-platform-tools/scripts/perkos_tools.py; then
+  pass "perkos_tools.py executable in installed skill"
+else
+  fail "perkos_tools.py missing or not executable"
+fi
+
+if docker exec "$CONTAINER" python3 /opt/data/skills/perkos-platform-tools/scripts/perkos_tools.py --help >/dev/null 2>&1; then
+  pass "perkos_tools.py --help runs under python3"
+else
+  fail "perkos_tools.py --help failed under container's python3"
+fi
+
+if docker exec "$CONTAINER" test -f /opt/data/skills/perkos-platform-tools/references/examples.md; then
+  pass "references/examples.md baked into installed skill"
+else
+  fail "references/examples.md missing from installed skill"
+fi
+
+# Confirm the script fails fast (exit 4) when the bridge auth env var is
+# absent — the contract our SKILL.md promises to the LLM.
+if docker exec "$CONTAINER" sh -c "unset A2A_BRIDGE_AUTH_SECRET PERKOS_CONV_ID; python3 /opt/data/skills/perkos-platform-tools/scripts/perkos_tools.py call listMyAgents '{}' --conv-id smoke 2>&1; echo exit=\$?" | grep -q "exit=4"; then
+  pass "perkos_tools.py fails fast (exit 4) without A2A_BRIDGE_AUTH_SECRET"
+else
+  fail "perkos_tools.py did not exit 4 when bridge auth missing — env contract broken"
+fi
+
 if docker exec "$CONTAINER" test -f /opt/perkos-assistant/SOUL.md; then
   pass "Assistant SOUL.md baked into image"
 else
