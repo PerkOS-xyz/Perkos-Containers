@@ -60,6 +60,15 @@ COPY skills/perkos-platform-tools /opt/perkos-skills/perkos-platform-tools
 # perkos-entrypoint.sh after upstream has set up HERMES_HOME with the
 # right ownership.
 
+# Hermes PLATFORM plugins — gateway adapters that bring in inbound
+# messages from external services (Telegram, Slack, Farcaster...).
+# Different from skills: platforms live under plugins/platforms/,
+# loaded by Hermes's PlatformRegistry. Each one is a self-contained
+# Python module with plugin.yaml + src/ + tests/. The entrypoint
+# stages them into $HERMES_HOME/plugins/platforms/ at boot, matching
+# the directory Hermes scans on startup.
+COPY plugins/platforms/farcaster /opt/perkos-platforms/farcaster
+
 LABEL org.opencontainers.image.title="PerkOS-Hermes" \
       org.opencontainers.image.description="Hermes agent + PerkOS LLM provider + Assistant content baked in" \
       org.opencontainers.image.source="https://github.com/PerkOS-xyz/Perkos-Containers" \

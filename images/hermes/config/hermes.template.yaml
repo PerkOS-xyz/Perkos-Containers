@@ -30,3 +30,23 @@ model:
 agent:
   id: ${PERKOS_AGENT_ID}
   name: ${PERKOS_AGENT_NAME}
+
+# Messaging gateway platforms. Each entry is read by Hermes only when
+# its plugin is present in $HERMES_HOME/plugins/platforms/. The
+# entrypoint stages a plugin's directory iff the agent's required env
+# vars are set, so an unconfigured gateway is silently absent here
+# rather than failing at startup.
+#
+# Telegram uses the Hermes-bundled adapter (no PerkOS plugin code
+# needed) — we just turn it on. Farcaster is our own plugin from
+# plugins/platforms/farcaster/.
+platforms:
+  telegram:
+    enabled: ${TELEGRAM_ENABLED:-false}
+    token_env: TELEGRAM_BOT_TOKEN
+    webhook_url: ${TELEGRAM_WEBHOOK_URL:-}
+  farcaster:
+    enabled: ${FARCASTER_ENABLED:-false}
+    api_key_env: FARCASTER_NEYNAR_API_KEY
+    signer_uuid_env: FARCASTER_SIGNER_UUID
+    fid_env: FARCASTER_FID

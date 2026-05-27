@@ -40,7 +40,7 @@ require PERKOS_AGENT_NAME
 require PERKOS_LLM_API_KEY
 
 HERMES_HOME="${HERMES_HOME:-/opt/data}"
-mkdir -p "$HERMES_HOME" "$HERMES_HOME/skills"
+mkdir -p "$HERMES_HOME" "$HERMES_HOME/skills" "$HERMES_HOME/plugins/platforms"
 
 # Render the config Hermes reads at startup. envsubst expands ${PERKOS_*}
 # in the template; literal $ signs in the template must be escaped as $$.
@@ -60,8 +60,22 @@ if [ -d /opt/perkos-skills/perkos-platform-tools ]; then
   cp -r /opt/perkos-skills/perkos-platform-tools "$HERMES_HOME/skills/perkos-platform-tools"
 fi
 
+# Stage messaging gateway platform adapters. We only stage a platform
+# if it has the env vars it needs — Hermes's PlatformRegistry won't
+# instantiate an adapter without required_env (declared in each
+# plugin.yaml), but staging the directory unconditionally would still
+# eat startup time scanning a plugin we'll never use. Conditional
+# copy keeps the loader noise out of the agent's log for inactive
+# gateways.
+if [ -d /opt/perkos-platforms/farcaster ] && [ -n "${FARCASTER_NEYNAR_API_KEY:-}" ]; then
+  rm -rf "$HERMES_HOME/plugins/platforms/farcaster"
+  cp -r /opt/perkos-platforms/farcaster "$HERMES_HOME/plugins/platforms/farcaster"
+  echo "perkos-entrypoint: staged farcaster platform plugin"
+fi
+
 echo "perkos-entrypoint: wrote $HERMES_HOME/config.yaml (agent=$PERKOS_AGENT_NAME id=$PERKOS_AGENT_ID)"
 echo "perkos-entrypoint: skills/ contains: $(ls "$HERMES_HOME/skills" 2>/dev/null | tr '\n' ' ')"
+echo "perkos-entrypoint: plugins/platforms/ contains: $(ls "$HERMES_HOME/plugins/platforms" 2>/dev/null | tr '\n' ' ')"
 
 # We created HERMES_HOME + skills dir as root above. Upstream entrypoint
 # detects mismatched ownership and chowns to the `hermes` user (UID 10000)

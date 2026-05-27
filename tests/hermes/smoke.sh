@@ -141,6 +141,28 @@ else
   fail "references/examples.md missing from installed skill"
 fi
 
+# Farcaster platform plugin is baked but NOT staged when its required
+# env vars are absent — that's the gating contract for messaging
+# gateways. Verify the source is present on disk and the entrypoint
+# skipped staging (no plugins/platforms/farcaster directory).
+if docker exec "$CONTAINER" test -d /opt/perkos-platforms/farcaster; then
+  pass "farcaster platform plugin baked at /opt/perkos-platforms/farcaster"
+else
+  fail "/opt/perkos-platforms/farcaster missing — Dockerfile COPY failed"
+fi
+
+if docker exec "$CONTAINER" test -f /opt/perkos-platforms/farcaster/plugin.yaml; then
+  pass "farcaster plugin.yaml present"
+else
+  fail "farcaster plugin.yaml missing"
+fi
+
+if docker exec "$CONTAINER" test ! -d /opt/data/plugins/platforms/farcaster; then
+  pass "farcaster NOT staged when FARCASTER_NEYNAR_API_KEY unset (gating works)"
+else
+  fail "farcaster was staged despite missing env — gating broken"
+fi
+
 # Hibernation snapshot/restore scripts are in place.
 if docker exec "$CONTAINER" test -x /usr/local/bin/perkos-snapshot.sh; then
   pass "perkos-snapshot.sh installed + executable"

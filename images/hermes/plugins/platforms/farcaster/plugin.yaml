@@ -1,0 +1,39 @@
+# Hermes platform plugin manifest — Farcaster
+#
+# Loaded by Hermes's PlatformRegistry at startup (it scans
+# $HERMES_HOME/plugins/platforms/*/plugin.yaml). The `entry_point`
+# value is a "module:function" reference. The function is called with
+# a registration context and is responsible for calling
+# `ctx.register_platform(PlatformEntry(...))` to wire the adapter
+# into the gateway runner.
+#
+# See: gateway/platforms/ADDING_A_PLATFORM.md in the Hermes upstream
+# repo for the full contract. We mirror its conventions exactly so
+# this plugin can be lifted out and contributed upstream as
+# `hermes-platform-farcaster` with zero code changes.
+
+name: farcaster
+version: 0.1.0
+description: |
+  Farcaster gateway for Hermes — inbound: agent receives mentions and
+  direct casts via a Neynar webhook; outbound: agent replies as casts
+  (or DCs when configured). Designed for the PerkOS deploy where
+  each agent owns a single Farcaster identity (signer) per ECS task.
+
+# Python module loaded into the same process as the Hermes gateway
+# runner. We're not running our own server — Hermes already runs an
+# HTTP server for webhooks and a worker for outbound; we just attach.
+entry_point: perkos_farcaster.plugin:register
+
+# Required env vars before the adapter will attempt to connect. The
+# entrypoint script gates `FARCASTER_ENABLED` on the presence of
+# these; the registry will skip our plugin entirely if it's false.
+required_env:
+  - FARCASTER_NEYNAR_API_KEY      # bot identity for read + write via Neynar
+  - FARCASTER_SIGNER_UUID         # the agent's Neynar-managed signer
+  - FARCASTER_FID                 # the agent's Farcaster ID
+
+# Optional env vars that customize behavior:
+#   FARCASTER_WEBHOOK_SECRET     HMAC secret for Neynar webhook verification
+#   FARCASTER_REPLY_VISIBILITY   "all" (default) | "mentions" — what triggers a response
+#   FARCASTER_PARENT_CHANNEL     channel parent URL to scope inbound to a channel
