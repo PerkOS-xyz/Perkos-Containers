@@ -19,7 +19,11 @@ env:
   # Upstream tags to wrap. Bumping these picks up upstream releases.
   OPENCLAW_TAG: latest
   HERMES_TAG: latest
-  PERKOS_A2A_VERSION: 0.9.2
+  # @perkos/perkos-a2a@0.10.0 added the local tools-token listener
+  # (PerkOS-A2A#25) which the per-agent ECS bridge sidecar
+  # (PerkOS#80) wires into the runtime plugin. 0.9.x bridges still
+  # work but won't enable the Platform-Tools-API path for runtimes.
+  PERKOS_A2A_VERSION: 0.10.0
 
 jobs:
   build-openclaw:

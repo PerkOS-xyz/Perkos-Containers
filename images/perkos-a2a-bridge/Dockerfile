@@ -20,7 +20,9 @@
 
 FROM node:22-alpine
 
-ARG PERKOS_A2A_VERSION=0.9.2
+# Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
+# in .github/workflows/build-push-ecr.yml — bump them together.
+ARG PERKOS_A2A_VERSION=0.10.0
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
@@ -46,7 +48,10 @@ EXPOSE 5050
 
 ENTRYPOINT ["/sbin/tini", "-g", "--"]
 # perkos-a2a-bridge (added in @perkos/perkos-a2a@0.9.2) is the
-# chat-enabled standalone bridge. It runs A2AServer + ChatClient in one
-# process; the older perkos-a2a-agent only handles the A2A protocol
-# layer without chat.
+# chat-enabled standalone bridge. It runs A2AServer + ChatClient in
+# one process; the older perkos-a2a-agent only handles the A2A
+# protocol layer without chat. As of 0.10.0 the bridge also starts a
+# local tools-token HTTP listener (when A2A_TOOLS_API_URL +
+# A2A_TOOLS_JWT_SECRET are set) so the runtime plugin can mint
+# short-lived JWTs for Platform-Tools-API calls.
 CMD ["perkos-a2a-bridge"]
