@@ -23,7 +23,7 @@ env:
   # (PerkOS-A2A#25) which the per-agent ECS bridge sidecar
   # (PerkOS#80) wires into the runtime plugin. 0.9.x bridges still
   # work but won't enable the Platform-Tools-API path for runtimes.
-  PERKOS_A2A_VERSION: 0.10.0
+  PERKOS_A2A_VERSION: 0.11.0
 
 jobs:
   build-openclaw:
