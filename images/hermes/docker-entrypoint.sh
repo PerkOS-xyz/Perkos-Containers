@@ -47,6 +47,43 @@ mkdir -p "$HERMES_HOME" "$HERMES_HOME/skills" "$HERMES_HOME/plugins/platforms"
 # Upstream entrypoint also writes a default cli-config.yaml.example to
 # $HERMES_HOME/config.yaml if absent — we always overwrite so the env
 # vars are the source of truth for the PerkOS deploy.
+#
+# Plain envsubst does NOT support `${VAR:-default}` fallback syntax
+# (that's a bash-only extension). The platforms block in the template
+# expects toggles to render as the literal strings "true" / "false"
+# so Hermes parses them as YAML booleans, not as the raw placeholder
+# text. Pre-normalize each toggle to a sane default if unset, then
+# export it so envsubst sees a real value and replaces `${VAR}`.
+#
+# truthy: accept the lenient inputs the catalog declares (true/1/yes),
+# normalize to the strict "true"/"false" strings Hermes expects.
+truthy() {
+  case "${1:-}" in
+    true|TRUE|True|1|yes|YES|Yes) echo true ;;
+    *) echo false ;;
+  esac
+}
+
+# api_server is enabled by default — it's the HTTP surface the
+# perkos-a2a bridge sidecar posts to. Operator can opt out with
+# API_SERVER_ENABLED=false.
+API_SERVER_ENABLED=$(truthy "${API_SERVER_ENABLED:-true}")
+API_SERVER_HOST="${API_SERVER_HOST:-0.0.0.0}"
+API_SERVER_PORT="${API_SERVER_PORT:-8642}"
+
+# Messaging gateways default OFF — a wallet enables them via the
+# /agents/new wizard which sets *_ENABLED via ecsProvision.
+TELEGRAM_ENABLED=$(truthy "${TELEGRAM_ENABLED:-}")
+TELEGRAM_WEBHOOK_URL="${TELEGRAM_WEBHOOK_URL:-}"
+SLACK_ENABLED=$(truthy "${SLACK_ENABLED:-}")
+SLACK_CHANNEL_ID="${SLACK_CHANNEL_ID:-}"
+FARCASTER_ENABLED=$(truthy "${FARCASTER_ENABLED:-}")
+
+export API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT
+export TELEGRAM_ENABLED TELEGRAM_WEBHOOK_URL
+export SLACK_ENABLED SLACK_CHANNEL_ID
+export FARCASTER_ENABLED
+
 envsubst < /opt/perkos/hermes.template.yaml > "$HERMES_HOME/config.yaml"
 chmod 644 "$HERMES_HOME/config.yaml"
 
