@@ -38,12 +38,23 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY config/hermes.template.yaml /opt/perkos/hermes.template.yaml
-COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
 COPY snapshot.sh /usr/local/bin/perkos-snapshot.sh
 COPY restore.sh /usr/local/bin/perkos-restore.sh
-RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh \
-              /usr/local/bin/perkos-snapshot.sh \
+RUN chmod 755 /usr/local/bin/perkos-snapshot.sh \
               /usr/local/bin/perkos-restore.sh
+
+# s6-overlay hooks. cont-init.d runs at boot AFTER s6 sets up its
+# environment (so s6-* binaries are in PATH) but BEFORE supervised
+# services start. cont-finish.d runs at shutdown AFTER services
+# have drained but BEFORE s6 exits. This replaces the deprecated
+# perkos-entrypoint.sh: we used to be PID 1 + fork the upstream
+# entrypoint, but upstream's /init now requires PID 1 (the suexec
+# helper hard-fails otherwise). Hooks let us keep the same boot +
+# shutdown behavior without owning PID 1.
+COPY cont-init.d/01-perkos-boot.sh /etc/cont-init.d/01-perkos-boot.sh
+COPY cont-finish.d/01-perkos-snapshot.sh /etc/cont-finish.d/01-perkos-snapshot.sh
+RUN chmod 755 /etc/cont-init.d/01-perkos-boot.sh \
+              /etc/cont-finish.d/01-perkos-snapshot.sh
 
 # PerkOS Assistant content — SOUL (persona) + runbook (FAQ knowledge).
 # Used only when the container is provisioned as the platform identity
@@ -79,10 +90,10 @@ LABEL org.opencontainers.image.title="PerkOS-Hermes" \
 ENV PERKOS_LLM_BASE_URL=https://api.llm.perkos.xyz/v1 \
     PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud
 
-# Our entrypoint runs FIRST (writes config, copies skill into HERMES_HOME),
-# then exec's the upstream entrypoint which handles user-drop + venv +
-# starts the `hermes` binary.
-ENTRYPOINT ["perkos-entrypoint.sh"]
-# No CMD — upstream entrypoint's default behavior takes over once we
-# delegate. Override via `docker compose run perkos-assistant hermes <cmd>`
-# if you need to invoke a specific hermes subcommand.
+# Use the upstream s6-overlay /init as PID 1 — that's the real
+# entrypoint per Hermes's deprecation note. Our boot + shutdown
+# customization rides in /etc/cont-init.d/ + /etc/cont-finish.d/
+# above. CMD is inherited from upstream so `hermes` starts normally;
+# override with `docker compose run hermes <subcmd>` for one-shot
+# invocations.
+ENTRYPOINT ["/init"]
