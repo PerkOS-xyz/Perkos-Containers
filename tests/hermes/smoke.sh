@@ -92,10 +92,10 @@ if echo "$logs" | grep -q "Permission denied"; then
 fi
 pass "no 'Permission denied' errors in logs"
 
-if echo "$logs" | grep -q "perkos-entrypoint: wrote /opt/data/config.yaml"; then
-  pass "our entrypoint rendered the config"
+if echo "$logs" | grep -q "perkos-boot: wrote /opt/data/config.yaml"; then
+  pass "our cont-init.d hook rendered the config"
 else
-  fail "our entrypoint never wrote /opt/data/config.yaml — exec chain broken"
+  fail "our cont-init.d hook never wrote /opt/data/config.yaml — s6 hook didn't run"
 fi
 
 if echo "$logs" | grep -q "Hermes Gateway Starting"; then
