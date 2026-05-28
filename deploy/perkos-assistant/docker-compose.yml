@@ -50,6 +50,16 @@ services:
       # parallel personas on the same container.
       HERMES_PROFILE_NAME: default
 
+      # api_server platform — Hermes's OpenAI-compatible HTTP surface
+      # (/v1/responses, /v1/chat/completions, …) that the perkos-a2a
+      # bridge posts inbound chat messages to. The template's default
+      # already enables it; we set host=0.0.0.0 so the sibling bridge
+      # container can reach it via the compose-network DNS name
+      # `http://perkos-assistant:8642`. Upstream's default is
+      # 127.0.0.1 which is unreachable from another container.
+      API_SERVER_HOST: 0.0.0.0
+      API_SERVER_PORT: "8642"
+
       # PerkOS-A2A bridge config. The bridge module reads these to open
       # WebSocket to chat.perkos.xyz + transport.perkos.xyz as the
       # PerkOS-Assistant agent identity.

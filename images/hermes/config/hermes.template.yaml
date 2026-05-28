@@ -41,6 +41,23 @@ agent:
 # needed) — we just turn it on. Farcaster is our own plugin from
 # plugins/platforms/farcaster/.
 platforms:
+  # api_server hosts the OpenAI-compatible HTTP API (/v1/responses,
+  # /v1/chat/completions, …) on port 8642. Always on — the
+  # perkos-a2a bridge sidecar reaches the runtime through this
+  # endpoint (deliverToHermes posts to /v1/responses). Without it
+  # the bridge can authenticate to chat.perkos.xyz but every inbound
+  # message fails with "hermes delivery failed: fetch failed".
+  #
+  # Bind to 0.0.0.0 (not the upstream default 127.0.0.1) so the
+  # bridge container on the same compose network can reach the
+  # runtime by service-name DNS. The HTTP surface is still scoped
+  # to that network — no port is published on the host unless the
+  # compose deliberately does so.
+  api_server:
+    enabled: ${API_SERVER_ENABLED:-true}
+    host: ${API_SERVER_HOST:-0.0.0.0}
+    port: ${API_SERVER_PORT:-8642}
+    key_env: API_SERVER_KEY
   telegram:
     enabled: ${TELEGRAM_ENABLED:-false}
     token_env: TELEGRAM_BOT_TOKEN
