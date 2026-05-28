@@ -101,10 +101,21 @@ ENV PATH="/opt/hermes/.venv/bin:${PATH}"
 ENV PERKOS_LLM_BASE_URL=https://api.llm.perkos.xyz/v1 \
     PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud
 
-# Use the upstream s6-overlay /init as PID 1 — that's the real
-# entrypoint per Hermes's deprecation note. Our boot + shutdown
-# customization rides in /etc/cont-init.d/ + /etc/cont-finish.d/
-# above. CMD is inherited from upstream so `hermes` starts normally;
-# override with `docker compose run hermes <subcmd>` for one-shot
-# invocations.
-ENTRYPOINT ["/init"]
+# Match upstream's exact ENTRYPOINT pair: /init runs as PID 1 and
+# /opt/hermes/docker/main-wrapper.sh is the "main program" /init
+# launches once s6 finishes bringing up the supervision tree.
+#
+# Why both args (not just /init): main-wrapper.sh activates the
+# venv (`. /opt/hermes/.venv/bin/activate`), routes argv to either
+# `hermes <subcmd>`, a bare executable, or the default `hermes`
+# binary, and drops privileges via s6-setuidgid. Without it, /init
+# has no "main program" to run after stage2 — it tries to invoke
+# whatever it can find on PATH and exits with "gateway: not
+# found" once s6-rc's legacy-services bundle finishes setup.
+#
+# CMD stays empty (inherited from upstream); user-supplied args
+# pass through main-wrapper.sh's routing logic:
+#   docker run <image>                → defaults to `hermes`
+#   docker run <image> chat -q "hi"   → `hermes chat -q "hi"`
+#   docker run <image> sleep infinity → bare exec sleep
+ENTRYPOINT ["/init", "/opt/hermes/docker/main-wrapper.sh"]
