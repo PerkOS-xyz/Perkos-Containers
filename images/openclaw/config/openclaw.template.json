@@ -28,5 +28,14 @@
       "enabled": true,
       "apiKey": "__PERKOS_GATEWAY_API_KEY__"
     }
+  },
+  "// channel plugins": "Each entry below is toggled per-agent by the matching *_ENABLED env var. The plugin manifest (extensions/<id>/openclaw.plugin.json) declares which channel env vars it consumes — telegram reads TELEGRAM_BOT_TOKEN, slack reads SLACK_BOT_TOKEN + SLACK_SIGNING_SECRET. Those env vars flow into the runtime container from ecsProvision regardless of the runtime an agent picks; once a plugin is enabled here it activates on first message.",
+  "plugins": {
+    "enabled": true,
+    "entries": {
+      "telegram": { "enabled": "__TELEGRAM_PLUGIN_ENABLED__" },
+      "slack":    { "enabled": "__SLACK_PLUGIN_ENABLED__" },
+      "discord":  { "enabled": "__DISCORD_PLUGIN_ENABLED__" }
+    }
   }
 }
