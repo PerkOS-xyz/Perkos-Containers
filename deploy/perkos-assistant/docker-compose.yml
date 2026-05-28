@@ -60,6 +60,13 @@ services:
       API_SERVER_HOST: 0.0.0.0
       API_SERVER_PORT: "8642"
 
+      # Required when host is non-loopback — Hermes refuses to start
+      # api_server on 0.0.0.0 without a key, so the public-binding
+      # can't accidentally be unauthenticated. The bridge container
+      # gets the same value below and sends it as Authorization:
+      # Bearer ${API_SERVER_KEY} on /v1/responses POSTs.
+      API_SERVER_KEY: ${API_SERVER_KEY}
+
       # PerkOS-A2A bridge config. The bridge module reads these to open
       # WebSocket to chat.perkos.xyz + transport.perkos.xyz as the
       # PerkOS-Assistant agent identity.
@@ -114,6 +121,12 @@ services:
       # Firestore /agents/{name}.
       A2A_AGENT_NAME: PerkOS-Assistant
       A2A_RELAY_API_KEY: ${PERKOS_RELAY_API_KEY}
+
+      # api_server bearer token — same value as the runtime so the
+      # bridge's deliverToHermes() can POST /v1/responses with
+      # Authorization: Bearer ${API_SERVER_KEY}. Without it Hermes
+      # returns 401 to every inbound chat frame.
+      API_SERVER_KEY: ${API_SERVER_KEY}
 
       # Where to reach Hermes on the compose network. perkos-assistant
       # listens on 8642 by default (upstream Hermes default port).
