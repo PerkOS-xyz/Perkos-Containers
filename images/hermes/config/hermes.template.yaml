@@ -45,6 +45,15 @@ platforms:
     enabled: ${TELEGRAM_ENABLED:-false}
     token_env: TELEGRAM_BOT_TOKEN
     webhook_url: ${TELEGRAM_WEBHOOK_URL:-}
+  slack:
+    # Hermes-bundled Slack adapter. We don't ship a custom platform
+    # plugin for Slack (unlike Farcaster) because the upstream
+    # adapter already exists at gateway/platforms/slack.py — env
+    # vars are the only contract we need to wire.
+    enabled: ${SLACK_ENABLED:-false}
+    bot_token_env: SLACK_BOT_TOKEN
+    signing_secret_env: SLACK_SIGNING_SECRET
+    channel_id: ${SLACK_CHANNEL_ID:-}
   farcaster:
     enabled: ${FARCASTER_ENABLED:-false}
     api_key_env: FARCASTER_NEYNAR_API_KEY
