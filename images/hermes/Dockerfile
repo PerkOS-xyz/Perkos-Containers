@@ -86,6 +86,17 @@ LABEL org.opencontainers.image.title="PerkOS-Hermes" \
       perkos.runtime="hermes" \
       perkos.upstream-tag="${HERMES_TAG}"
 
+# Prepend the upstream Hermes venv to PATH so legacy supervised
+# services (the auto-generated per-profile `gateway` slots that
+# hermes_cli.container_boot writes into /run/service/) can find
+# `gateway`, `hermes`, and friends without each `run` script
+# having to re-activate the venv. Upstream's main-wrapper.sh does
+# `. /opt/hermes/.venv/bin/activate`, but the dynamic gateway
+# services skip that step — so without this, s6-rc starts
+# legacy-services, calls `gateway`, gets "command not found", and
+# the container exits.
+ENV PATH="/opt/hermes/.venv/bin:${PATH}"
+
 # Defaults — overridable at runtime via -e.
 ENV PERKOS_LLM_BASE_URL=https://api.llm.perkos.xyz/v1 \
     PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud
