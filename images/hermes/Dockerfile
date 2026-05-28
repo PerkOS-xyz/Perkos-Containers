@@ -38,23 +38,12 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY config/hermes.template.yaml /opt/perkos/hermes.template.yaml
+COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
 COPY snapshot.sh /usr/local/bin/perkos-snapshot.sh
 COPY restore.sh /usr/local/bin/perkos-restore.sh
-RUN chmod 755 /usr/local/bin/perkos-snapshot.sh \
+RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh \
+              /usr/local/bin/perkos-snapshot.sh \
               /usr/local/bin/perkos-restore.sh
-
-# s6-overlay hooks. cont-init.d runs at boot AFTER s6 sets up its
-# environment (so s6-* binaries are in PATH) but BEFORE supervised
-# services start. cont-finish.d runs at shutdown AFTER services
-# have drained but BEFORE s6 exits. This replaces the deprecated
-# perkos-entrypoint.sh: we used to be PID 1 + fork the upstream
-# entrypoint, but upstream's /init now requires PID 1 (the suexec
-# helper hard-fails otherwise). Hooks let us keep the same boot +
-# shutdown behavior without owning PID 1.
-COPY cont-init.d/01-perkos-boot.sh /etc/cont-init.d/01-perkos-boot.sh
-COPY cont-finish.d/01-perkos-snapshot.sh /etc/cont-finish.d/01-perkos-snapshot.sh
-RUN chmod 755 /etc/cont-init.d/01-perkos-boot.sh \
-              /etc/cont-finish.d/01-perkos-snapshot.sh
 
 # PerkOS Assistant content — SOUL (persona) + runbook (FAQ knowledge).
 # Used only when the container is provisioned as the platform identity
@@ -86,36 +75,25 @@ LABEL org.opencontainers.image.title="PerkOS-Hermes" \
       perkos.runtime="hermes" \
       perkos.upstream-tag="${HERMES_TAG}"
 
-# Prepend the upstream Hermes venv to PATH so legacy supervised
-# services (the auto-generated per-profile `gateway` slots that
-# hermes_cli.container_boot writes into /run/service/) can find
-# `gateway`, `hermes`, and friends without each `run` script
-# having to re-activate the venv. Upstream's main-wrapper.sh does
-# `. /opt/hermes/.venv/bin/activate`, but the dynamic gateway
-# services skip that step — so without this, s6-rc starts
-# legacy-services, calls `gateway`, gets "command not found", and
-# the container exits.
+# Defense in depth — prepend the upstream Hermes venv to PATH so any
+# subprocess that doesn't activate the venv first (e.g. ad-hoc
+# `docker exec` runs of `hermes`) still finds the binary. The
+# upstream entrypoint script also sets this, but having it baked in
+# at the image level means it's still present in our environment if
+# the upstream path-handling drifts.
 ENV PATH="/opt/hermes/.venv/bin:${PATH}"
 
 # Defaults — overridable at runtime via -e.
 ENV PERKOS_LLM_BASE_URL=https://api.llm.perkos.xyz/v1 \
     PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud
 
-# Match upstream's exact ENTRYPOINT pair: /init runs as PID 1 and
-# /opt/hermes/docker/main-wrapper.sh is the "main program" /init
-# launches once s6 finishes bringing up the supervision tree.
-#
-# Why both args (not just /init): main-wrapper.sh activates the
-# venv (`. /opt/hermes/.venv/bin/activate`), routes argv to either
-# `hermes <subcmd>`, a bare executable, or the default `hermes`
-# binary, and drops privileges via s6-setuidgid. Without it, /init
-# has no "main program" to run after stage2 — it tries to invoke
-# whatever it can find on PATH and exits with "gateway: not
-# found" once s6-rc's legacy-services bundle finishes setup.
-#
-# CMD stays empty (inherited from upstream); user-supplied args
-# pass through main-wrapper.sh's routing logic:
-#   docker run <image>                → defaults to `hermes`
-#   docker run <image> chat -q "hi"   → `hermes chat -q "hi"`
-#   docker run <image> sleep infinity → bare exec sleep
-ENTRYPOINT ["/init", "/opt/hermes/docker/main-wrapper.sh"]
+# Our entrypoint runs FIRST (renders config, copies skill + platform
+# plugin into HERMES_HOME), then forks upstream's docker/entrypoint.sh
+# as a child so we keep PID 1 — that's how the SIGTERM trap survives
+# long enough to snapshot. On graceful shutdown we forward TERM to
+# upstream, wait for it to drain, then snapshot HERMES_HOME to S3
+# (no-op when PERKOS_HIBERNATION_S3_URI is unset).
+ENTRYPOINT ["perkos-entrypoint.sh"]
+# No CMD — upstream's entrypoint inherits its own CMD via exec. Override
+# at compose level (e.g. `command: ["gateway", "run"]`) for the
+# long-lived gateway daemon used by PerkOS-Assistant.
