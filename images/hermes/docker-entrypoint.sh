@@ -9,8 +9,21 @@
 #      where Hermes auto-discovers it
 #   3. If PERKOS_HIBERNATION_S3_URI is set, restore the latest snapshot
 #      into HERMES_HOME BEFORE upstream starts. No-op on first launch.
-#   4. Run /opt/hermes/docker/entrypoint.sh as a CHILD (not exec), trap
-#      SIGTERM, and on shutdown: stop upstream → wait → snapshot → exit
+#   4. Run /init (s6-overlay) as a CHILD (not exec), trap SIGTERM,
+#      and on shutdown: stop upstream → wait → snapshot → exit.
+#
+# Why /init (not /opt/hermes/docker/entrypoint.sh):
+#   Upstream Hermes deprecated docker/entrypoint.sh — it now only
+#   runs the stage2 cont-init hook and does NOT exec the CMD, so a
+#   container started via that wrapper boots a half-initialized
+#   environment (missing s6-setuidgid in PATH) and exits before the
+#   agent ever starts. The real entrypoint is /init, which handles
+#   the full s6-overlay bootstrap (stage1 + stage2) and then exec's
+#   the image's default CMD (the `hermes` binary). We invoke /init
+#   directly so the s6-setuidgid + service-supervision tree comes
+#   up correctly. SIGTERM forwarding still works: s6's /init catches
+#   the signal we send to its PID and gracefully shuts down all
+#   supervised children before exiting.
 #
 # Bash (not sh): we need `trap`, `wait $!`, and `kill -TERM "$PID"`.
 #
@@ -93,14 +106,16 @@ echo "perkos-entrypoint: checking for hibernation snapshot..."
 /usr/local/bin/perkos-restore.sh || \
   echo "perkos-entrypoint: restore failed (continuing with fresh state)"
 
-echo "perkos-entrypoint: delegating to upstream entrypoint..."
+echo "perkos-entrypoint: delegating to /init (s6-overlay)..."
 
-# Fork (not exec) upstream so we keep PID 1 — that's how the SIGTERM
-# trap survives long enough to snapshot. We forward the signal to
-# upstream first, wait for it to drain, then snapshot, then exit. ECS
-# Fargate's task stopTimeout gives us a generous budget (the miniapp
-# sets it to 300s) so a small tar+upload comfortably fits.
-/opt/hermes/docker/entrypoint.sh "$@" &
+# Fork (not exec) s6-overlay's /init so we keep PID 1 — that's how
+# the SIGTERM trap survives long enough to snapshot. s6 forwards
+# our signal to its supervised children (the hermes binary + any
+# sidecar services), waits for them to drain, then exits. ECS
+# Fargate's task stopTimeout gives us a generous budget (the
+# miniapp sets it to 300s) so s6's graceful shutdown + our tar +
+# S3 upload comfortably fit.
+/init "$@" &
 UPSTREAM_PID=$!
 
 shutdown_handler() {
