@@ -184,11 +184,25 @@ echo "perkos-entrypoint: delegating to upstream entrypoint..."
 
 if [ -x /init ]; then
   echo "perkos-entrypoint: upstream uses s6-overlay (/init present) — exec /init"
-  # exec replaces our shell so /init becomes PID 1. Signal handling +
-  # CMD exec are owned by s6 from here on. TODO: install a
-  # cont-finish.d hook that runs perkos-snapshot.sh on graceful
-  # shutdown if PERKOS_HIBERNATION_S3_URI is set.
-  exec /init "$@"
+  # exec replaces our shell so /init becomes PID 1. Signal handling is
+  # owned by s6 from here on.
+  #
+  # We deliberately drop "$@" (the CMD) before exec'ing /init. In s6
+  # mode the `main-hermes` s6-rc service already starts the gateway
+  # daemon at boot, so legacy callers passing CMD ["gateway", "run"]
+  # — both our compose file and the CI smoke test — would have their
+  # CMD dispatched to s6's `legacy-services`, which runs in a shell
+  # context where the hermes Python venv isn't on PATH and `gateway`
+  # fails with `not found`. Dropping the CMD lets main-hermes do its
+  # job alone and keeps the legacy callers compatible without code
+  # changes on their side.
+  #
+  # TODO: install a cont-finish.d hook that runs perkos-snapshot.sh
+  # on graceful shutdown when PERKOS_HIBERNATION_S3_URI is set.
+  if [ "$#" -gt 0 ]; then
+    echo "perkos-entrypoint: ignoring CMD args ($*) — main-hermes s6 service runs the gateway"
+  fi
+  exec /init
 fi
 
 # Fork (not exec) the legacy upstream entrypoint so we keep PID 1 —
