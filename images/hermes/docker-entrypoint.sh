@@ -161,11 +161,42 @@ echo "perkos-entrypoint: checking for hibernation snapshot..."
 
 echo "perkos-entrypoint: delegating to upstream entrypoint..."
 
-# Fork (not exec) upstream so we keep PID 1 — that's how the SIGTERM
-# trap survives long enough to snapshot. We forward the signal to
-# upstream first, wait for it to drain, then snapshot, then exit. ECS
-# Fargate's task stopTimeout gives us a generous budget (the miniapp
-# sets it to 300s) so a small tar+upload comfortably fits.
+# Upstream Hermes oscillates between two ENTRYPOINT shapes across
+# releases:
+#
+#   1. s6-overlay: `/init` is the real ENTRYPOINT. It bootstraps the
+#      s6 supervision tree and execs CMD itself. `docker/entrypoint.sh`
+#      becomes a deprecated shim that crashes when invoked directly
+#      because the s6 utilities (`s6-setuidgid`, etc) are only on PATH
+#      from inside the supervision tree.
+#
+#   2. Non-s6: `docker/entrypoint.sh` is the real ENTRYPOINT and execs
+#      CMD itself. There is no `/init`.
+#
+# Detect by probing `/init` and route accordingly. For the s6 case we
+# can't keep PID 1 (s6 has to be PID 1 to supervise its services), so
+# the snapshot-on-SIGTERM logic ceases to apply for that path —
+# Hibernation snapshots in s6 mode need a cont-finish.d hook instead.
+# Today the perkos-assistant deploy doesn't set
+# PERKOS_HIBERNATION_S3_URI, so this is a no-op in prod; the legacy
+# non-s6 path keeps the snapshot trap intact for ECS Fargate hibernation
+# clients that still run that variant.
+
+if [ -x /init ]; then
+  echo "perkos-entrypoint: upstream uses s6-overlay (/init present) — exec /init"
+  # exec replaces our shell so /init becomes PID 1. Signal handling +
+  # CMD exec are owned by s6 from here on. TODO: install a
+  # cont-finish.d hook that runs perkos-snapshot.sh on graceful
+  # shutdown if PERKOS_HIBERNATION_S3_URI is set.
+  exec /init "$@"
+fi
+
+# Fork (not exec) the legacy upstream entrypoint so we keep PID 1 —
+# that's how the SIGTERM trap survives long enough to snapshot. We
+# forward the signal to upstream first, wait for it to drain, then
+# snapshot, then exit. ECS Fargate's task stopTimeout gives us a
+# generous budget (the miniapp sets it to 300s) so a small tar+upload
+# comfortably fits.
 /opt/hermes/docker/entrypoint.sh "$@" &
 UPSTREAM_PID=$!
 
