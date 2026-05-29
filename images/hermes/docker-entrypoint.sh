@@ -114,6 +114,35 @@ echo "perkos-entrypoint: wrote $HERMES_HOME/config.yaml (agent=$PERKOS_AGENT_NAM
 echo "perkos-entrypoint: skills/ contains: $(ls "$HERMES_HOME/skills" 2>/dev/null | tr '\n' ' ')"
 echo "perkos-entrypoint: plugins/platforms/ contains: $(ls "$HERMES_HOME/plugins/platforms" 2>/dev/null | tr '\n' ' ')"
 
+# Persist the PerkOS Assistant SOUL across rebuilds.
+#
+# If /opt/perkos-assistant/SOUL.md exists in the image, concatenate it
+# with the runbook files at /opt/perkos-assistant/runbook/*.md and write
+# the combined output to $HERMES_HOME/SOUL.md (default /opt/data/SOUL.md).
+# Hermes loads SOUL.md fresh each message, so the new content takes
+# effect on the very next chat without a runtime restart.
+#
+# Only kicks in for the PerkOS-Assistant agent (PERKOS_AGENT_NAME=
+# "PerkOS-Assistant"); other Hermes agents get their default persona.
+
+if [ "${PERKOS_AGENT_NAME:-}" = "PerkOS-Assistant" ] && [ -f /opt/perkos-assistant/SOUL.md ]; then
+  {
+    cat /opt/perkos-assistant/SOUL.md
+    if [ -d /opt/perkos-assistant/runbook ]; then
+      for f in /opt/perkos-assistant/runbook/*.md; do
+        [ -f "$f" ] || continue
+        echo
+        echo "## File: $(basename "$f")"
+        echo
+        cat "$f"
+        echo
+      done
+    fi
+  } > "${HERMES_HOME:-/opt/data}/SOUL.md"
+  chown hermes:hermes "${HERMES_HOME:-/opt/data}/SOUL.md" 2>/dev/null || true
+  echo "perkos-entrypoint: PerkOS-Assistant SOUL installed at ${HERMES_HOME:-/opt/data}/SOUL.md"
+fi
+
 # We created HERMES_HOME + skills dir as root above. Upstream entrypoint
 # detects mismatched ownership and chowns to the `hermes` user (UID 10000)
 # before dropping privileges — but its `mkdir -p $HERMES_HOME/skills/...`
