@@ -99,9 +99,11 @@ else
 fi
 
 if echo "$logs" | grep -q "Hermes Gateway Starting"; then
-  pass "upstream Hermes gateway reached startup banner"
+  pass "upstream Hermes gateway reached startup banner (legacy non-s6 path)"
+elif echo "$logs" | grep -q "service main-hermes successfully started"; then
+  pass "s6-rc started main-hermes service (s6-overlay path)"
 else
-  fail "upstream Hermes never reached 'Hermes Gateway Starting' — delegation broken"
+  fail "neither 'Hermes Gateway Starting' (legacy) nor 'main-hermes successfully started' (s6) found — delegation broken"
 fi
 
 # --- File-presence assertions (via docker exec) ---
