@@ -18,7 +18,7 @@ services:
       dockerfile: Dockerfile
       args:
         HERMES_TAG: latest
-        PERKOS_A2A_VERSION: "0.11.0"
+        PERKOS_A2A_VERSION: "0.12.0"
     image: perkos-assistant-hermes:local
     container_name: perkos-assistant
     restart: unless-stopped
@@ -108,7 +108,7 @@ services:
       context: ../../images/perkos-a2a-bridge
       dockerfile: Dockerfile
       args:
-        PERKOS_A2A_VERSION: "0.11.0"
+        PERKOS_A2A_VERSION: "0.12.0"
     image: perkos-assistant-bridge:local
     container_name: perkos-assistant-bridge
     restart: unless-stopped
@@ -150,6 +150,16 @@ services:
       A2A_CHAT_ENABLED: "true"
       A2A_CHAT_URL: ${PERKOS_CHAT_URL:-wss://chat.perkos.xyz/chat}
       A2A_CHAT_API_KEY: ${PERKOS_RELAY_API_KEY}
+
+      # Auto-reply from Hermes responses (perkos-a2a >= 0.12.0).
+      # The bridge and Hermes runtime are in separate containers here,
+      # so Hermes can't reach the bridge's /chat/reply listener on
+      # 127.0.0.1. With AUTO_REPLY=true the bridge extracts the
+      # assistant text from Hermes's /v1/responses body and pushes it
+      # to chat.perkos.xyz via chat.sendReply directly — no callback
+      # required. Replaces the in-container hot-patch we applied on
+      # 2026-05-28.
+      A2A_HERMES_AUTO_REPLY: "true"
 
     # Process-level healthcheck — in NAT mode the bridge skips its A2A
     # HTTP server entirely and uses the relay for all transport (logs

@@ -80,7 +80,7 @@ ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 '
 '
 ```
 
-First build takes ~2-3 min (pulls `nousresearch/hermes-agent:latest`, installs `@perkos/perkos-a2a@0.11.0` — which ships the gateway-health reporter — copies the SOUL + runbook content).
+First build takes ~2-3 min (pulls `nousresearch/hermes-agent:latest`, installs `@perkos/perkos-a2a@0.12.0` — which ships the gateway-health reporter — copies the SOUL + runbook content).
 
 ### Step 5 — Verify
 
