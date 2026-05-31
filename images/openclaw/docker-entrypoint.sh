@@ -82,19 +82,7 @@ jq \
     | gsub("__PERKOS_LLM_API_KEY__";  $api_key)
     | gsub("__PERKOS_LLM_DEFAULT_MODEL__"; $model)
     | gsub("__PERKOS_GATEWAY_API_KEY__";   $gateway_key)
-    | gsub("__TELEGRAM_PLUGIN_ENABLED__";  $telegram_plugin_enabled)
-    | gsub("__SLACK_PLUGIN_ENABLED__";     $slack_plugin_enabled)
-    | gsub("__DISCORD_PLUGIN_ENABLED__";   $discord_plugin_enabled)
   )
-  | if .plugins.entries.telegram.enabled then
-      .plugins.entries.telegram.enabled |= (. == "true")
-    else . end
-  | if .plugins.entries.slack.enabled then
-      .plugins.entries.slack.enabled |= (. == "true")
-    else . end
-  | if .plugins.entries.discord.enabled then
-      .plugins.entries.discord.enabled |= (. == "true")
-    else . end
   ' /opt/perkos/openclaw.template.json > "$OPENCLAW_CONFIG_PATH"
 
 chmod 600 "$OPENCLAW_CONFIG_PATH"

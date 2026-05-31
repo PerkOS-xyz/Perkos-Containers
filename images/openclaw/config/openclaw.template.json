@@ -1,8 +1,26 @@
 {
-  "// PerkOS baseline": "Templated by perkos-entrypoint.sh on container start. __VARS__ get replaced from env. BYOK can override the provider at runtime via OPENCLAW_PROVIDER_OVERRIDE=anthropic|openai|openrouter + the matching *_API_KEY var.",
-  "agent": {
-    "name": "__PERKOS_AGENT_NAME__",
-    "id": "__PERKOS_AGENT_ID__"
+  "agents": {
+    "defaults": {
+      "workspace": "/home/node/.openclaw/workspace",
+      "model": {
+        "primary": "ollama/__PERKOS_LLM_DEFAULT_MODEL__"
+      }
+    }
+  },
+  "gateway": {
+    "port": 3000,
+    "mode": "local",
+    "auth": {
+      "mode": "token",
+      "token": "__PERKOS_GATEWAY_API_KEY__"
+    },
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    }
   },
   "models": {
     "providers": {
@@ -14,28 +32,35 @@
           "x-agent-id": "__PERKOS_AGENT_ID__"
         },
         "models": [
-          { "id": "kimi-k2.6:cloud", "name": "Kimi K2.6 Cloud", "contextWindow": 128000 },
-          { "id": "qwen2.5:7b", "name": "Qwen 2.5 7B", "contextWindow": 32768 },
-          { "id": "qwen2.5:14b", "name": "Qwen 2.5 14B", "contextWindow": 32768 }
+          {
+            "id": "kimi-k2.6:cloud",
+            "name": "Kimi K2.6 Cloud",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 128000,
+            "maxTokens": 8192
+          },
+          {
+            "id": "qwen2.5:7b",
+            "name": "Qwen 2.5 7B",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 32768,
+            "maxTokens": 32768
+          },
+          {
+            "id": "qwen2.5:14b",
+            "name": "Qwen 2.5 14B",
+            "reasoning": false,
+            "input": ["text"],
+            "cost": { "input": 0, "output": 0, "cacheRead": 0, "cacheWrite": 0 },
+            "contextWindow": 32768,
+            "maxTokens": 32768
+          }
         ]
       }
-    },
-    "defaultModel": "__PERKOS_LLM_DEFAULT_MODEL__"
-  },
-  "gateway": {
-    "bind": "lan",
-    "auth": {
-      "enabled": true,
-      "apiKey": "__PERKOS_GATEWAY_API_KEY__"
-    }
-  },
-  "// channel plugins": "Each entry below is toggled per-agent by the matching *_ENABLED env var. The plugin manifest (extensions/<id>/openclaw.plugin.json) declares which channel env vars it consumes — telegram reads TELEGRAM_BOT_TOKEN, slack reads SLACK_BOT_TOKEN + SLACK_SIGNING_SECRET. Those env vars flow into the runtime container from ecsProvision regardless of the runtime an agent picks; once a plugin is enabled here it activates on first message.",
-  "plugins": {
-    "enabled": true,
-    "entries": {
-      "telegram": { "enabled": "__TELEGRAM_PLUGIN_ENABLED__" },
-      "slack":    { "enabled": "__SLACK_PLUGIN_ENABLED__" },
-      "discord":  { "enabled": "__DISCORD_PLUGIN_ENABLED__" }
     }
   }
 }

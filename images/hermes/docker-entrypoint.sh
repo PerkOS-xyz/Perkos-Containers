@@ -182,7 +182,7 @@ echo "perkos-entrypoint: delegating to upstream entrypoint..."
 # non-s6 path keeps the snapshot trap intact for ECS Fargate hibernation
 # clients that still run that variant.
 
-if [ -x /init ]; then
+if [ -x /init ] && [ "${PERKOS_BYPASS_S6:-}" != "true" ]; then
   echo "perkos-entrypoint: upstream uses s6-overlay (/init present) — exec /init"
   # exec replaces our shell so /init becomes PID 1. Signal handling is
   # owned by s6 from here on.
