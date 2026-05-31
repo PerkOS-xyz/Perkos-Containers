@@ -90,4 +90,21 @@ chmod 600 "$OPENCLAW_CONFIG_PATH"
 echo "perkos-entrypoint: wrote $OPENCLAW_CONFIG_PATH (agent=$PERKOS_AGENT_NAME id=$PERKOS_AGENT_ID)"
 echo "perkos-entrypoint: channel plugins — telegram=$TELEGRAM_PLUGIN_ENABLED slack=$SLACK_PLUGIN_ENABLED discord=$DISCORD_PLUGIN_ENABLED"
 
+# Persona from env (PerkOS template SOUL).
+#
+# The provisioner base64's the chosen template's rendered markdown into
+# PERKOS_AGENT_SOUL_B64. OpenClaw reads AGENTS.md from the workspace
+# root as the agent's standing instructions, so decode it there. The
+# template config sets agents.defaults.workspace; mirror that path
+# here (default ~/.openclaw/workspace). Absent → default persona.
+if [ -n "${PERKOS_AGENT_SOUL_B64:-}" ]; then
+  WORKSPACE_DIR="${OPENCLAW_WORKSPACE:-$CONFIG_DIR/workspace}"
+  mkdir -p "$WORKSPACE_DIR"
+  if printf '%s' "$PERKOS_AGENT_SOUL_B64" | base64 -d > "$WORKSPACE_DIR/AGENTS.md" 2>/dev/null; then
+    echo "perkos-entrypoint: persona AGENTS.md written from PERKOS_AGENT_SOUL_B64 ($(wc -c < "$WORKSPACE_DIR/AGENTS.md") bytes) at $WORKSPACE_DIR"
+  else
+    echo "perkos-entrypoint: WARNING failed to decode PERKOS_AGENT_SOUL_B64 — using default persona"
+  fi
+fi
+
 exec "$@"

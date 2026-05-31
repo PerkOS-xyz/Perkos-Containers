@@ -114,6 +114,22 @@ echo "perkos-entrypoint: wrote $HERMES_HOME/config.yaml (agent=$PERKOS_AGENT_NAM
 echo "perkos-entrypoint: skills/ contains: $(ls "$HERMES_HOME/skills" 2>/dev/null | tr '\n' ' ')"
 echo "perkos-entrypoint: plugins/platforms/ contains: $(ls "$HERMES_HOME/plugins/platforms" 2>/dev/null | tr '\n' ' ')"
 
+# Persona from env (PerkOS template SOUL).
+#
+# The launcher renders the chosen template's soul to markdown and the
+# provisioner base64's it into PERKOS_AGENT_SOUL_B64. Decode it to
+# $HERMES_HOME/SOUL.md so the agent boots with its persona. Hermes
+# reloads SOUL.md fresh each message. Takes precedence over the baked
+# Assistant SOUL below; absent → fall through to defaults.
+if [ -n "${PERKOS_AGENT_SOUL_B64:-}" ]; then
+  if printf '%s' "$PERKOS_AGENT_SOUL_B64" | base64 -d > "${HERMES_HOME:-/opt/data}/SOUL.md" 2>/dev/null; then
+    chown 10000:10000 "${HERMES_HOME:-/opt/data}/SOUL.md" 2>/dev/null || true
+    echo "perkos-entrypoint: persona SOUL.md written from PERKOS_AGENT_SOUL_B64 ($(wc -c < "${HERMES_HOME:-/opt/data}/SOUL.md") bytes)"
+  else
+    echo "perkos-entrypoint: WARNING failed to decode PERKOS_AGENT_SOUL_B64 — using default persona"
+  fi
+fi
+
 # Persist the PerkOS Assistant SOUL across rebuilds.
 #
 # If /opt/perkos-assistant/SOUL.md exists in the image, concatenate it
@@ -123,9 +139,9 @@ echo "perkos-entrypoint: plugins/platforms/ contains: $(ls "$HERMES_HOME/plugins
 # effect on the very next chat without a runtime restart.
 #
 # Only kicks in for the PerkOS-Assistant agent (PERKOS_AGENT_NAME=
-# "PerkOS-Assistant"); other Hermes agents get their default persona.
+# "PerkOS-Assistant") AND when no env-provided persona already won above.
 
-if [ "${PERKOS_AGENT_NAME:-}" = "PerkOS-Assistant" ] && [ -f /opt/perkos-assistant/SOUL.md ]; then
+if [ -z "${PERKOS_AGENT_SOUL_B64:-}" ] && [ "${PERKOS_AGENT_NAME:-}" = "PerkOS-Assistant" ] && [ -f /opt/perkos-assistant/SOUL.md ]; then
   {
     cat /opt/perkos-assistant/SOUL.md
     if [ -d /opt/perkos-assistant/runbook ]; then
