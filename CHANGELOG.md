@@ -9,6 +9,23 @@ versions are optional; date-stamped sections are fine for in-flight work.
 
 ## 2026-06-01
 
+### Hermes — BYOK OpenAI fix: explicit `api_mode: chat_completions`
+
+`images/hermes/config/hermes.template.yaml`: added `api_mode:
+chat_completions` to the model block. Hermes' `runtime_provider.py`
+auto-detects the wire protocol from the base_url host, and **any**
+`api.openai.com` URL is forced to `codex_responses` (the OpenAI Responses
+API, which expects a Codex/OAuth auth profile, not a plain api_key bearer →
+401 "missing bearer"). An explicit `api_mode` on a `provider: custom` block
+is honored (`_provider_supports_explicit_api_mode`) and SKIPS that
+auto-detect, so the api_key reaches `Authorization: Bearer` on
+`POST /v1/chat/completions`. `chat_completions` is also what the PerkOS
+gateway (api.llm.perkos.xyz, kimi) resolves to, so it's correct for both.
+A future GPT-5.x-reasoning BYOK model would want `codex_responses` + a Codex
+auth profile (out of scope). **Requires an ECR image rebuild** to ship.
+(OpenClaw's equivalent BYOK fix is provision-side — see PerkOS-API — and
+needs no image change.)
+
 ### Hermes — fix s6 boot regression (exit 127) + open-source skills install
 
 `images/hermes/docker-entrypoint.sh`: upstream Hermes turned

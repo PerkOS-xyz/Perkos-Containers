@@ -27,6 +27,19 @@ model:
   # logged/inspected without leaking secrets.
   api_key_env: PERKOS_LLM_API_KEY
 
+  # Wire protocol. MUST be explicit for BYOK: Hermes' runtime_provider.py
+  # auto-detects api_mode from the base_url host, and ANY api.openai.com
+  # URL is forced to "codex_responses" (the OpenAI Responses API, which
+  # expects a Codex/OAuth auth profile, not a plain api_key bearer → 401
+  # "missing bearer"). An explicit api_mode on a provider:custom block is
+  # honored (runtime_provider._provider_supports_explicit_api_mode) and
+  # SKIPS that auto-detect, so the api_key reaches Authorization: Bearer
+  # on POST /v1/chat/completions. "chat_completions" is also what the
+  # PerkOS gateway (api.llm.perkos.xyz, kimi) resolves to, so it is
+  # correct for both. (A future GPT-5.x-reasoning BYOK model would want
+  # "codex_responses" + a Codex auth profile — out of scope here.)
+  api_mode: chat_completions
+
 agent:
   id: ${PERKOS_AGENT_ID}
   name: ${PERKOS_AGENT_NAME}
