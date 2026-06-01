@@ -7,6 +7,32 @@ captures *what shipped* and the *why* — the equivalent of a good commit body,
 collected here so operators don't have to spelunk `git log`. Tag-style
 versions are optional; date-stamped sections are fine for in-flight work.
 
+## 2026-06-01
+
+### Hermes — fix s6 boot regression (exit 127) + open-source skills install
+
+`images/hermes/docker-entrypoint.sh`: upstream Hermes turned
+`docker/entrypoint.sh` into a deprecated shim that dies with
+`s6-setuidgid: not found` (exit 127) outside the s6 tree, so the old
+`PERKOS_BYPASS_S6=true` path crash-looped on Fargate. The image's real
+entrypoint is `/init` (s6-overlay), which runs the CMD as its main
+program via `/opt/hermes/docker/main-wrapper.sh` (activates the venv,
+drops to uid 10000). Fix: our entrypoint does config/SOUL/skills setup
+then `exec /init <main-wrapper.sh> gateway run`. Verified live —
+api_server binds :8642 again. `PERKOS_BYPASS_S6` is now ignored.
+
+### Both runtimes — install open-source skills at boot
+
+`images/{openclaw,hermes}/docker-entrypoint.sh` decode a base64 JSON list
+of `{name,url}` from `PERKOS_AGENT_SKILLS_B64` and fetch each `SKILL.md`
+into the agent's skills dir (OpenClaw `<workspace>/skills` via a node
+helper, Hermes `$HERMES_HOME/skills` via python3, after the hibernation
+restore). Hardening: host allow-list (`raw.githubusercontent.com`)
+re-checked in both entrypoints, name sanitized to `[a-z0-9-]`, no redirect
+following, `O_NOFOLLOW` + realpath guard vs snapshot-planted symlinks,
+256KB/40-count/15s caps, degrade-not-crash. Smoke tests cover positive
+install + non-allow-listed skip + SSRF/metadata block.
+
 ## 2026-05-29
 
 ### Hermes — persist PerkOS Assistant SOUL across container rebuilds
