@@ -21,10 +21,16 @@
 # `perkos-a2a-agent` CLI. NOT bundled into this image; the compose file
 # at deploy/perkos-assistant/ adds it as its own service (follow-up PR).
 
-ARG HERMES_TAG=latest
-FROM nousresearch/hermes-agent:${HERMES_TAG}
+# HERMES_REF is the full base reference. Locally it defaults to the moving
+# `:latest` tag; CI resolves `:latest` to a concrete @sha256 digest and
+# passes it here so each weekly release is reproducible. HERMES_TAG /
+# HERMES_VERSION stay around purely for the human-readable labels.
+ARG HERMES_REF=nousresearch/hermes-agent:latest
+FROM ${HERMES_REF}
 
-ARG HERMES_TAG
+ARG HERMES_TAG=latest
+ARG HERMES_REF=nousresearch/hermes-agent:latest
+ARG HERMES_VERSION=
 
 USER root
 
@@ -73,7 +79,9 @@ LABEL org.opencontainers.image.title="PerkOS-Hermes" \
       org.opencontainers.image.description="Hermes agent + PerkOS LLM provider + Assistant content baked in" \
       org.opencontainers.image.source="https://github.com/PerkOS-xyz/Perkos-Containers" \
       perkos.runtime="hermes" \
-      perkos.upstream-tag="${HERMES_TAG}"
+      perkos.upstream-tag="${HERMES_TAG}" \
+      perkos.upstream-ref="${HERMES_REF}" \
+      perkos.upstream-version="${HERMES_VERSION}"
 
 # Defense in depth — prepend the upstream Hermes venv to PATH so any
 # subprocess that doesn't activate the venv first (e.g. ad-hoc

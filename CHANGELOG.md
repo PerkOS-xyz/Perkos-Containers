@@ -9,6 +9,39 @@ versions are optional; date-stamped sections are fine for in-flight work.
 
 ## 2026-06-01
 
+### Weekly reproducible releases: digest pin + beta channel + behavior test
+
+The build pipeline now produces a **weekly, reproducible, behavior-tested**
+release instead of a manual `:latest` rebuild:
+
+- **Cron**: `build-push-ecr.yml` runs every Monday 06:00 UTC (still triggers
+  on `images/**` push + `workflow_dispatch`).
+- **Digest pin**: a "Resolve upstream digest" step turns the moving
+  `openclaw/hermes :latest` into a concrete `@sha256` and builds `FROM` it,
+  so a release can always be rebuilt identically. The OCI
+  `org.opencontainers.image.version` label is read and baked as
+  `perkos.upstream-version`. Dockerfiles gained `OPENCLAW_REF`/`HERMES_REF`
+  (+ `*_VERSION`) args; they default to `:latest` so local builds are
+  unchanged.
+- **Registration**: after push, `scripts/ingest-runtime-image.sh` POSTs the
+  new tag to PerkOS-API `/internal/runtimes/ingest` (API-key auth via
+  `RUNTIME_INGEST_KEY`). The image lands on the **beta** channel with its
+  resolved upstream + build status and a *pending* behavior test.
+- **Behavior test** (`tests/behavior/run.sh`, job `behavior-test`):
+  provisions an ephemeral agent from each freshly-pushed tag, sends canonical
+  prompts (incl. a PM/plan-and-delegate prompt that reproduces the Hermes
+  `(empty)` failure), asserts substantive replies, tears it down, and posts
+  the verdict to `/internal/runtimes/behavior-test`. **Fail-closed**: only a
+  genuine pass lets an admin later promote the image to the public channel.
+- **A2A pin**: workflow bumped `PERKOS_A2A_VERSION` 0.11.0 → 0.12.0 to match
+  the bridge Dockerfile default and the Assistant compose (all three 0.12.0).
+
+CI secrets/vars needed: `RUNTIME_INGEST_KEY` (secret), `BEHAVIOR_TEST_TOKEN`
+(secret, a tester/super-admin Firebase ID token), `PERKOS_API_URL` (var).
+
+Follow-up: mark the ephemeral `bt-*` agent so the API curator never hibernates
+it mid-test (today the script's explicit DELETE teardown handles cleanup).
+
 ### Hermes — BYOK OpenAI fix: explicit `api_mode: chat_completions`
 
 `images/hermes/config/hermes.template.yaml`: added `api_mode:

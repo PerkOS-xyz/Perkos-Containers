@@ -16,11 +16,17 @@
 # not inside this image. Splits concerns so we can ship A2A protocol
 # changes without rebuilding the OpenClaw image.
 
-ARG OPENCLAW_TAG=latest
-FROM ghcr.io/openclaw/openclaw:${OPENCLAW_TAG}
+# OPENCLAW_REF is the full base reference. Locally it defaults to the
+# moving `:latest` tag; CI resolves `:latest` to a concrete @sha256 digest
+# and passes it here so each weekly release is reproducible. OPENCLAW_TAG /
+# OPENCLAW_VERSION stay around purely for the human-readable labels.
+ARG OPENCLAW_REF=ghcr.io/openclaw/openclaw:latest
+FROM ${OPENCLAW_REF}
 
-# Re-declare so it's available in the runtime stage.
-ARG OPENCLAW_TAG
+# Re-declare so they're available in the runtime stage (for labels).
+ARG OPENCLAW_TAG=latest
+ARG OPENCLAW_REF=ghcr.io/openclaw/openclaw:latest
+ARG OPENCLAW_VERSION=
 
 USER root
 
@@ -45,7 +51,9 @@ LABEL org.opencontainers.image.title="PerkOS-OpenClaw" \
       org.opencontainers.image.description="OpenClaw with PerkOS-LLM provider + ECS-ready config" \
       org.opencontainers.image.source="https://github.com/PerkOS-xyz/Perkos-Containers" \
       perkos.runtime="openclaw" \
-      perkos.upstream-tag="${OPENCLAW_TAG}"
+      perkos.upstream-tag="${OPENCLAW_TAG}" \
+      perkos.upstream-ref="${OPENCLAW_REF}" \
+      perkos.upstream-version="${OPENCLAW_VERSION}"
 
 USER node
 

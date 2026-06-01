@@ -1,6 +1,12 @@
 name: Build + push to ECR
 
 on:
+  # Weekly reproducible release: every Monday 06:00 UTC we re-resolve the
+  # upstream `latest` images to a concrete digest, rebuild, smoke-test, push,
+  # and register the new tag in the API on the BETA channel (pending its
+  # behavior test). Promotion to public is an admin action in PerkOS-Admin.
+  schedule:
+    - cron: "0 6 * * 1"
   push:
     branches: [main]
     paths:
@@ -17,14 +23,20 @@ on:
 env:
   AWS_REGION: us-east-1
   ECR_REGISTRY: 089332276762.dkr.ecr.us-east-1.amazonaws.com
-  # Upstream tags to wrap. Bumping these picks up upstream releases.
+  # Upstream repos to wrap. The moving `:latest` tag is resolved to a
+  # concrete @sha256 digest at build time (see "Resolve upstream digest").
+  OPENCLAW_REPO: ghcr.io/openclaw/openclaw
+  HERMES_REPO: nousresearch/hermes-agent
   OPENCLAW_TAG: latest
   HERMES_TAG: latest
-  # @perkos/perkos-a2a@0.10.0 added the local tools-token listener
-  # (PerkOS-A2A#25) which the per-agent ECS bridge sidecar
-  # (PerkOS#80) wires into the runtime plugin. 0.9.x bridges still
-  # work but won't enable the Platform-Tools-API path for runtimes.
-  PERKOS_A2A_VERSION: 0.11.0
+  # @perkos/perkos-a2a@0.12.0 ships the A2A_HERMES_AUTO_REPLY flag the
+  # Assistant relies on. Kept in lockstep with the bridge Dockerfile default
+  # and deploy/perkos-assistant/docker-compose.yml — bump all three together.
+  PERKOS_A2A_VERSION: 0.12.0
+  # Where to register the freshly-pushed image (BETA channel) + later post
+  # behavior-test results. PERKOS_API_URL is a repo variable; the shared
+  # secret is RUNTIME_INGEST_KEY.
+  PERKOS_API_URL: ${{ vars.PERKOS_API_URL }}
 
 jobs:
   build-openclaw:
@@ -52,9 +64,23 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # Build with `load: true` first so the smoke test can `docker
-      # run` the image before we push it to ECR. The push step below
-      # reuses the buildx layer cache, so the second build is fast.
+      # Pin the upstream by digest so this build is reproducible, and read
+      # the OCI version label so the platform can show "what's running".
+      - name: Resolve upstream digest
+        id: upstream
+        run: |
+          REPO="${OPENCLAW_REPO}"
+          DIGEST="$(docker buildx imagetools inspect "${REPO}:${OPENCLAW_TAG}" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          if [ -z "$DIGEST" ]; then echo "could not resolve digest"; exit 1; fi
+          VERSION="$(docker buildx imagetools inspect "${REPO}@${DIGEST}" \
+            --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}' \
+            2>/dev/null || true)"
+          echo "ref=${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${REPO}:${OPENCLAW_TAG} -> ${DIGEST} (version='${VERSION}')"
+
       - name: Build openclaw (load for testing)
         uses: docker/build-push-action@v6
         with:
@@ -62,7 +88,9 @@ jobs:
           load: true
           platforms: linux/amd64
           build-args: |
+            OPENCLAW_REF=${{ steps.upstream.outputs.ref }}
             OPENCLAW_TAG=${{ env.OPENCLAW_TAG }}
+            OPENCLAW_VERSION=${{ steps.upstream.outputs.version }}
           tags: perkos-openclaw:test
 
       - name: Smoke test openclaw
@@ -75,10 +103,25 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: |
+            OPENCLAW_REF=${{ steps.upstream.outputs.ref }}
             OPENCLAW_TAG=${{ env.OPENCLAW_TAG }}
+            OPENCLAW_VERSION=${{ steps.upstream.outputs.version }}
           tags: |
             ${{ env.ECR_REGISTRY }}/perkos-openclaw:${{ steps.tags.outputs.version }}
             ${{ env.ECR_REGISTRY }}/perkos-openclaw:latest
+
+      - name: Register image (beta channel)
+        env:
+          RUNTIME_INGEST_KEY: ${{ secrets.RUNTIME_INGEST_KEY }}
+        run: |
+          ./scripts/ingest-runtime-image.sh \
+            --runtime openclaw \
+            --primary-tag "${{ steps.tags.outputs.version }}" \
+            --upstream-source "${OPENCLAW_REPO}" \
+            --upstream-version "${{ steps.upstream.outputs.version }}" \
+            --upstream-digest "${{ steps.upstream.outputs.digest }}" \
+            --a2a-version "${PERKOS_A2A_VERSION}" \
+            --build-status ok
 
   build-hermes:
     runs-on: ubuntu-latest
@@ -105,9 +148,21 @@ jobs:
 
       - uses: docker/setup-buildx-action@v3
 
-      # Build with `load: true` first so the smoke test can `docker run`
-      # against the image before we push it to ECR. The push step below
-      # reuses the buildx layer cache, so the second build is ~5s.
+      - name: Resolve upstream digest
+        id: upstream
+        run: |
+          REPO="${HERMES_REPO}"
+          DIGEST="$(docker buildx imagetools inspect "${REPO}:${HERMES_TAG}" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          if [ -z "$DIGEST" ]; then echo "could not resolve digest"; exit 1; fi
+          VERSION="$(docker buildx imagetools inspect "${REPO}@${DIGEST}" \
+            --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}' \
+            2>/dev/null || true)"
+          echo "ref=${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${REPO}:${HERMES_TAG} -> ${DIGEST} (version='${VERSION}')"
+
       - name: Build hermes (load for testing)
         uses: docker/build-push-action@v6
         with:
@@ -115,7 +170,9 @@ jobs:
           load: true
           platforms: linux/amd64
           build-args: |
+            HERMES_REF=${{ steps.upstream.outputs.ref }}
             HERMES_TAG=${{ env.HERMES_TAG }}
+            HERMES_VERSION=${{ steps.upstream.outputs.version }}
             PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
           tags: perkos-hermes:test
 
@@ -129,11 +186,26 @@ jobs:
           push: true
           platforms: linux/amd64
           build-args: |
+            HERMES_REF=${{ steps.upstream.outputs.ref }}
             HERMES_TAG=${{ env.HERMES_TAG }}
+            HERMES_VERSION=${{ steps.upstream.outputs.version }}
             PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
           tags: |
             ${{ env.ECR_REGISTRY }}/perkos-hermes:${{ steps.tags.outputs.version }}
             ${{ env.ECR_REGISTRY }}/perkos-hermes:latest
+
+      - name: Register image (beta channel)
+        env:
+          RUNTIME_INGEST_KEY: ${{ secrets.RUNTIME_INGEST_KEY }}
+        run: |
+          ./scripts/ingest-runtime-image.sh \
+            --runtime hermes \
+            --primary-tag "${{ steps.tags.outputs.version }}" \
+            --upstream-source "${HERMES_REPO}" \
+            --upstream-version "${{ steps.upstream.outputs.version }}" \
+            --upstream-digest "${{ steps.upstream.outputs.digest }}" \
+            --a2a-version "${PERKOS_A2A_VERSION}" \
+            --build-status ok
 
   build-perkos-a2a-bridge:
     runs-on: ubuntu-latest
@@ -184,3 +256,32 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/perkos-a2a-bridge:${{ steps.tags.outputs.version }}
             ${{ env.ECR_REGISTRY }}/perkos-a2a-bridge:latest
+
+  # Behavior test: provision an ephemeral agent from each freshly-pushed
+  # image, send canonical prompts (incl. a PM/plan-and-delegate prompt that
+  # reproduces the Hermes "(empty)" failure mode), assert substantive
+  # replies, then tear the agent down. The result is posted back to the API;
+  # a "fail" keeps the image un-promotable to the public channel.
+  behavior-test:
+    needs: [build-openclaw, build-hermes]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          DATE="$(date -u +%Y.%m.%d)"
+          SHA="${GITHUB_SHA::7}"
+          SUFFIX="${{ github.event.inputs.tag_suffix }}"
+          [ -n "$SUFFIX" ] && SUFFIX="-${SUFFIX}"
+          echo "openclaw=${OPENCLAW_TAG}-perkos.${DATE}.${SHA}${SUFFIX}" >> "$GITHUB_OUTPUT"
+          echo "hermes=${HERMES_TAG}-perkos.${DATE}.${SHA}${SUFFIX}" >> "$GITHUB_OUTPUT"
+
+      - name: Behavior test (openclaw + hermes)
+        env:
+          RUNTIME_INGEST_KEY: ${{ secrets.RUNTIME_INGEST_KEY }}
+          BEHAVIOR_TEST_TOKEN: ${{ secrets.BEHAVIOR_TEST_TOKEN }}
+        run: |
+          ./tests/behavior/run.sh openclaw "${{ steps.tags.outputs.openclaw }}"
+          ./tests/behavior/run.sh hermes   "${{ steps.tags.outputs.hermes }}"
