@@ -13,11 +13,17 @@
 # and a non-zero exit. This guarantees the public-promotion gate never opens
 # on an untested or broken image.
 #
+# Auth (enterprise pattern — no long-lived credential in CI):
+#   1. POST /internal/runtimes/test-credentials (x-runtime-ingest-key) → the
+#      API mints a short-lived Firebase CUSTOM token for the dedicated
+#      behavior-test service wallet.
+#   2. Exchange it via Firebase Auth signInWithCustomToken (public web API
+#      key) → a ~1h ID token used as the Bearer for launch/chat/teardown.
+#
 # Required env:
-#   PERKOS_API_URL        base URL, e.g. https://api.perkos.xyz
-#   RUNTIME_INGEST_KEY    shared secret for /internal/runtimes/behavior-test
-#   BEHAVIOR_TEST_TOKEN   Firebase ID token for a super-admin/tester wallet
-#                         (provisioning + chat are wallet-authenticated)
+#   PERKOS_API_URL         base URL, e.g. https://api.perkos.xyz
+#   RUNTIME_INGEST_KEY     shared secret for /internal/runtimes/*
+#   FIREBASE_WEB_API_KEY   project web API key (public; used for the exchange)
 #
 # Usage: run.sh <openclaw|hermes> <primaryTag>
 set -uo pipefail
@@ -60,12 +66,32 @@ finish() { # status
 }
 
 # --- prerequisites --------------------------------------------------------
-if [ -z "${BEHAVIOR_TEST_TOKEN:-}" ]; then
-  add_check "prerequisites" false "BEHAVIOR_TEST_TOKEN not set — cannot provision/chat"
+API="$PERKOS_API_URL"
+if [ -z "${FIREBASE_WEB_API_KEY:-}" ]; then
+  add_check "prerequisites" false "FIREBASE_WEB_API_KEY not set — cannot mint test token"
   finish "fail"
 fi
-AUTH="Authorization: Bearer ${BEHAVIOR_TEST_TOKEN}"
-API="$PERKOS_API_URL"
+
+# 1. Mint a custom token for the service wallet (API-key authed).
+CUSTOM="$(curl -sS -X POST "${API}/internal/runtimes/test-credentials" \
+  -H "x-runtime-ingest-key: ${RUNTIME_INGEST_KEY}" \
+  -H "content-type: application/json" | jq -r '.customToken // empty')"
+if [ -z "$CUSTOM" ]; then
+  add_check "mint-token" false "API did not return a custom token (check BEHAVIOR_TEST_WALLET)"
+  finish "fail"
+fi
+# 2. Exchange custom token → short-lived ID token via Firebase Auth REST.
+ID_TOKEN="$(curl -sS -X POST \
+  "https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${FIREBASE_WEB_API_KEY}" \
+  -H "content-type: application/json" \
+  --data "$(jq -nc --arg t "$CUSTOM" '{token:$t, returnSecureToken:true}')" \
+  | jq -r '.idToken // empty')"
+if [ -z "$ID_TOKEN" ]; then
+  add_check "exchange-token" false "signInWithCustomToken returned no idToken"
+  finish "fail"
+fi
+add_check "auth" true "minted + exchanged service-wallet token"
+AUTH="Authorization: Bearer ${ID_TOKEN}"
 NAME="bt-${RUNTIME_LC}-$(date -u +%H%M%S)"
 
 # --- launch ---------------------------------------------------------------

@@ -281,7 +281,7 @@ jobs:
       - name: Behavior test (openclaw + hermes)
         env:
           RUNTIME_INGEST_KEY: ${{ secrets.RUNTIME_INGEST_KEY }}
-          BEHAVIOR_TEST_TOKEN: ${{ secrets.BEHAVIOR_TEST_TOKEN }}
+          FIREBASE_WEB_API_KEY: ${{ vars.FIREBASE_WEB_API_KEY }}
         run: |
           ./tests/behavior/run.sh openclaw "${{ steps.tags.outputs.openclaw }}"
           ./tests/behavior/run.sh hermes   "${{ steps.tags.outputs.hermes }}"

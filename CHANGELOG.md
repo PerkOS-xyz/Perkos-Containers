@@ -36,8 +36,12 @@ release instead of a manual `:latest` rebuild:
 - **A2A pin**: workflow bumped `PERKOS_A2A_VERSION` 0.11.0 → 0.12.0 to match
   the bridge Dockerfile default and the Assistant compose (all three 0.12.0).
 
-CI secrets/vars needed: `RUNTIME_INGEST_KEY` (secret), `BEHAVIOR_TEST_TOKEN`
-(secret, a tester/super-admin Firebase ID token), `PERKOS_API_URL` (var).
+CI secrets/vars needed: `RUNTIME_INGEST_KEY` (secret), `PERKOS_API_URL` (var),
+`FIREBASE_WEB_API_KEY` (var). The behavior test no longer takes a long-lived
+token: it mints a short-lived Firebase custom token via
+`POST /internal/runtimes/test-credentials` (API-key authed, for the dedicated
+`BEHAVIOR_TEST_WALLET` service identity) and exchanges it to a ~1h ID token
+with `signInWithCustomToken` at run time.
 
 Follow-up: mark the ephemeral `bt-*` agent so the API curator never hibernates
 it mid-test (today the script's explicit DELETE teardown handles cleanup).
