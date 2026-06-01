@@ -1,12 +1,11 @@
 name: Build + push to ECR
 
 on:
-  # Weekly reproducible release: every Monday 06:00 UTC we re-resolve the
-  # upstream `latest` images to a concrete digest, rebuild, smoke-test, push,
-  # and register the new tag in the API on the BETA channel (pending its
-  # behavior test). Promotion to public is an admin action in PerkOS-Admin.
-  schedule:
-    - cron: "0 6 * * 1"
+  # NOTE: weekly cron intentionally disabled — releases are triggered
+  # manually (workflow_dispatch) or on push to images/**. To re-enable the
+  # Monday 06:00 UTC reproducible release, restore:
+  #   schedule:
+  #     - cron: "0 6 * * 1"
   push:
     branches: [main]
     paths:
