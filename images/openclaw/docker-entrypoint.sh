@@ -64,12 +64,17 @@ DISCORD_PLUGIN_ENABLED=$(truthy "${DISCORD_ENABLED:-}")
 # strings, but the openclaw plugin config requires a real `true`/
 # `false`, not the literal string "true". Two-step pattern is
 # simpler than mixing jq filter modes mid-pipeline.
+# Provider API kind: "ollama" for the PerkOS gateway (default), or
+# "openai" when pointed at an OpenAI-compatible endpoint (BYOK). The
+# provisioner sets PERKOS_LLM_API; default to ollama for back-compat.
+LLM_API="${PERKOS_LLM_API:-ollama}"
 jq \
   --arg agent_id    "$PERKOS_AGENT_ID" \
   --arg agent_name  "$PERKOS_AGENT_NAME" \
   --arg base_url    "$PERKOS_LLM_BASE_URL" \
   --arg api_key     "$PERKOS_LLM_API_KEY" \
   --arg model       "$PERKOS_LLM_DEFAULT_MODEL" \
+  --arg llm_api     "$LLM_API" \
   --arg gateway_key "$PERKOS_GATEWAY_API_KEY" \
   --arg telegram_plugin_enabled "$TELEGRAM_PLUGIN_ENABLED" \
   --arg slack_plugin_enabled    "$SLACK_PLUGIN_ENABLED" \
@@ -81,6 +86,7 @@ jq \
     | gsub("__PERKOS_LLM_BASE_URL__"; $base_url)
     | gsub("__PERKOS_LLM_API_KEY__";  $api_key)
     | gsub("__PERKOS_LLM_DEFAULT_MODEL__"; $model)
+    | gsub("__PERKOS_LLM_API__";      $llm_api)
     | gsub("__PERKOS_GATEWAY_API_KEY__";   $gateway_key)
   )
   ' /opt/perkos/openclaw.template.json > "$OPENCLAW_CONFIG_PATH"
