@@ -294,27 +294,43 @@ echo "perkos-entrypoint: delegating to upstream entrypoint..."
 # non-s6 path keeps the snapshot trap intact for ECS Fargate hibernation
 # clients that still run that variant.
 
-if [ -x /init ] && [ "${PERKOS_BYPASS_S6:-}" != "true" ]; then
-  echo "perkos-entrypoint: upstream uses s6-overlay (/init present) — exec /init"
-  # exec replaces our shell so /init becomes PID 1. Signal handling is
-  # owned by s6 from here on.
+if [ -x /init ]; then
+  # s6-overlay image (current upstream). `/init` MUST be PID 1: it
+  # bootstraps the s6 supervision tree and then runs the container's
+  # CMD as its "main program" (the canonical s6-overlay "exit when the
+  # program exits" pattern — confirmed in the image's own main-hermes
+  # run-script comments). So we exec /init and PASS the gateway command
+  # as its args.
   #
-  # We deliberately drop "$@" (the CMD) before exec'ing /init. In s6
-  # mode the `main-hermes` s6-rc service already starts the gateway
-  # daemon at boot, so legacy callers passing CMD ["gateway", "run"]
-  # — both our compose file and the CI smoke test — would have their
-  # CMD dispatched to s6's `legacy-services`, which runs in a shell
-  # context where the hermes Python venv isn't on PATH and `gateway`
-  # fails with `not found`. Dropping the CMD lets main-hermes do its
-  # job alone and keeps the legacy callers compatible without code
-  # changes on their side.
+  # History: an earlier image variant let us skip s6 via
+  # PERKOS_BYPASS_S6=true and run docker/entrypoint.sh directly. Current
+  # upstream turned that shim into a deprecated stub that dies with
+  # `s6-setuidgid: not found` (exit 127) outside the s6 tree — so the
+  # bypass is no longer viable and is intentionally ignored here. We
+  # also must NOT drop the CMD: with no main program, /init starts s6
+  # but never launches the gateway, so the api_server never binds.
   #
-  # TODO: install a cont-finish.d hook that runs perkos-snapshot.sh
-  # on graceful shutdown when PERKOS_HIBERNATION_S3_URI is set.
-  if [ "$#" -gt 0 ]; then
-    echo "perkos-entrypoint: ignoring CMD args ($*) — main-hermes s6 service runs the gateway"
+  # The main program MUST be the upstream main-wrapper.sh, not `gateway`
+  # directly: the image's original ENTRYPOINT was
+  # ["/init", "/opt/hermes/docker/main-wrapper.sh"], and that wrapper is
+  # what (a) repopulates env via with-contenv, (b) activates the hermes
+  # Python venv (`. /opt/hermes/.venv/bin/activate`), and (c) drops to the
+  # `hermes` user via s6-setuidgid before exec'ing the CLI. Passing
+  # `gateway run` straight to /init bypasses all of that → `gateway: not
+  # found`. So route our gateway args THROUGH the wrapper.
+  if [ "${PERKOS_BYPASS_S6:-}" = "true" ]; then
+    echo "perkos-entrypoint: PERKOS_BYPASS_S6=true ignored — upstream requires s6; routing through /init"
   fi
-  exec /init
+  WRAPPER=/opt/hermes/docker/main-wrapper.sh
+  # CMD args, if any, are the hermes subcommand; default to `gateway run`
+  # (PerkOS runs Hermes in API-server mode).
+  if [ "$#" -gt 0 ]; then
+    set -- "$WRAPPER" "$@"
+  else
+    set -- "$WRAPPER" gateway run
+  fi
+  echo "perkos-entrypoint: exec /init $*"
+  exec /init "$@"
 fi
 
 # Fork (not exec) the legacy upstream entrypoint so we keep PID 1 —
