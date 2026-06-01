@@ -226,6 +226,46 @@ else
   fail "config.yaml missing api_key_env binding"
 fi
 
+# --- Open-source skills install (PERKOS_AGENT_SKILLS_B64) ---
+# Boot a second container with a skills payload: one allow-listed entry
+# (real SHA-pinned ethskills SKILL.md) + one non-allow-listed host. Assert
+# the good one lands, the bad one is skipped, and boot survived.
+SKILLS_C="perkos-hermes-smoke-skills-$$"
+GOOD_URL="https://raw.githubusercontent.com/austintgriffith/ethskills/191dcc1ead0182aab16d4c742bee8b15f2d0d8d7/security/SKILL.md"
+SKILLS_JSON="[{\"name\":\"smoke-good\",\"url\":\"${GOOD_URL}\"},{\"name\":\"smoke-evil\",\"url\":\"https://evil.example.com/x/SKILL.md\"}]"
+SKILLS_B64="$(printf '%s' "$SKILLS_JSON" | base64 | tr -d '\n')"
+
+docker run -d --name "$SKILLS_C" "${ENV_ARGS[@]}" \
+  -e PERKOS_AGENT_SKILLS_B64="$SKILLS_B64" "$IMAGE" gateway run >/dev/null \
+  || fail "docker run (skills) failed"
+
+# Wait for the boot-time fetch to land the good skill (network in CI).
+sk_ok=""
+for _ in $(seq 1 25); do
+  if docker exec "$SKILLS_C" test -f /opt/data/skills/smoke-good/SKILL.md 2>/dev/null; then sk_ok=1; break; fi
+  sleep 2
+done
+if [ -n "$sk_ok" ]; then
+  pass "skills: allow-listed SKILL.md installed at /opt/data/skills/smoke-good"
+else
+  docker logs "$SKILLS_C" 2>&1 | tail -20 >&2
+  docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
+  fail "skills: allow-listed SKILL.md not installed"
+fi
+if docker exec "$SKILLS_C" test -e /opt/data/skills/smoke-evil 2>/dev/null; then
+  docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
+  fail "skills: non-allow-listed host was NOT skipped"
+else
+  pass "skills: non-allow-listed host skipped (correct)"
+fi
+if docker exec "$SKILLS_C" test -f /opt/data/config.yaml 2>/dev/null; then
+  pass "skills: boot survived the install step"
+else
+  docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
+  fail "skills: boot did not complete config render"
+fi
+docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
+
 echo ""
 echo "✅ All smoke checks passed for $IMAGE"
 exit 0

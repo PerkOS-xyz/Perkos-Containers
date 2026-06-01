@@ -150,4 +150,56 @@ if run_container perkos-openclaw-smoke-env-$$ \
   fi
 fi
 
+# ---------------------------------------------------------------
+# Pass 4: open-source skills install from PERKOS_AGENT_SKILLS_B64.
+# The entrypoint must (a) fetch an allow-listed SKILL.md into the
+# workspace skills dir, (b) skip a non-allow-listed host, and (c)
+# never crash boot on a bad fetch.
+# ---------------------------------------------------------------
+SKILLS_DIR=/home/node/.openclaw/workspace/skills
+# A real, SHA-pinned ethskills security SKILL.md on the only allow-listed
+# host (raw.githubusercontent.com). CI has network; this is a stable pin.
+GOOD_URL="https://raw.githubusercontent.com/austintgriffith/ethskills/191dcc1ead0182aab16d4c742bee8b15f2d0d8d7/security/SKILL.md"
+SKILLS_JSON="[{\"name\":\"smoke-good\",\"url\":\"${GOOD_URL}\"},{\"name\":\"smoke-evil\",\"url\":\"https://evil.example.com/x/SKILL.md\"}]"
+SKILLS_B64="$(printf '%s' "$SKILLS_JSON" | base64 | tr -d '\n')"
+
+if run_container perkos-openclaw-smoke-skills-$$ -e PERKOS_AGENT_SKILLS_B64="$SKILLS_B64"; then
+  # Give the boot-time fetch a moment.
+  waited=0
+  while [ "$waited" -lt 20 ]; do
+    docker exec "$CONTAINER" test -f "$SKILLS_DIR/smoke-good/SKILL.md" 2>/dev/null && break
+    sleep 1; waited=$((waited + 1))
+  done
+  if docker exec "$CONTAINER" test -f "$SKILLS_DIR/smoke-good/SKILL.md" 2>/dev/null; then
+    pass "skills: allow-listed SKILL.md installed"
+  else
+    fail "skills: allow-listed SKILL.md not installed (network? entrypoint?)"
+  fi
+  # Non-allow-listed host must be skipped — its dir must NOT exist.
+  if docker exec "$CONTAINER" test -e "$SKILLS_DIR/smoke-evil" 2>/dev/null; then
+    fail "skills: non-allow-listed host was NOT skipped"
+  else
+    pass "skills: non-allow-listed host skipped (correct)"
+  fi
+  # Boot still healthy → fetch step degraded, didn't crash.
+  if docker exec "$CONTAINER" test -f "$CFG" 2>/dev/null; then
+    pass "skills: boot survived the install step"
+  else
+    fail "skills: boot did not complete config render"
+  fi
+fi
+
+# ---------------------------------------------------------------
+# Pass 5: resilience — a payload of ONLY a bad/non-allow-listed entry
+# must not create anything and must not crash boot.
+# ---------------------------------------------------------------
+BAD_B64="$(printf '%s' '[{"name":"only-evil","url":"http://169.254.169.254/latest/meta-data/"}]' | base64 | tr -d '\n')"
+if run_container perkos-openclaw-smoke-skills-bad-$$ -e PERKOS_AGENT_SKILLS_B64="$BAD_B64"; then
+  if docker exec "$CONTAINER" test -e "$SKILLS_DIR/only-evil" 2>/dev/null; then
+    fail "skills: SSRF-style metadata URL was NOT blocked"
+  else
+    pass "skills: metadata/non-https URL blocked + boot survived"
+  fi
+fi
+
 exit "$ok"

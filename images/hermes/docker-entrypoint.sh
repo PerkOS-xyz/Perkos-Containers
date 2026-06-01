@@ -175,6 +175,102 @@ echo "perkos-entrypoint: checking for hibernation snapshot..."
 /usr/local/bin/perkos-restore.sh || \
   echo "perkos-entrypoint: restore failed (continuing with fresh state)"
 
+# Open-source skills (PerkOS skill packs the wallet selected in the wizard).
+#
+# The provisioner base64's a JSON list of { name, url } into
+# PERKOS_AGENT_SKILLS_B64. Each url is a raw SKILL.md the server already
+# resolved + allow-list filtered. We run AFTER restore so the freshly
+# fetched (latest) skill content wins over any stale snapshot copy, and
+# BEFORE the final chown below so the files end up owned by uid 10000.
+#
+# Hardening (a SKILL.md is injected into the system prompt — treat as a
+# prompt-injection vector): the fetch runs in a sandboxed python helper
+# that (1) re-checks each url host against a hard-coded allow-list, (2)
+# sanitizes `name` to [a-z0-9-] so it can't escape the skills dir, (3)
+# caps file size, (4) writes only to <skillsdir>/<name>/SKILL.md, and
+# (5) never aborts the boot on a failed fetch.
+if [ -n "${PERKOS_AGENT_SKILLS_B64:-}" ]; then
+  echo "perkos-entrypoint: installing selected skill packs..."
+  PERKOS_AGENT_SKILLS_B64="$PERKOS_AGENT_SKILLS_B64" \
+  PERKOS_SKILLS_DIR="${HERMES_HOME:-/opt/data}/skills" \
+  python3 - <<'PYSKILLS' || echo "perkos-entrypoint: skill install step failed (continuing)"
+import base64, json, os, re, sys
+from urllib.parse import urlparse
+from urllib.request import build_opener, HTTPRedirectHandler, Request
+
+# Host allow-list: only fetch SKILL.md from these hosts. Keep in sync with
+# the server resolver (services/skillsCatalog.ts) and the OpenClaw entrypoint.
+ALLOWED_HOSTS = {"raw.githubusercontent.com"}
+MAX_BYTES = 256 * 1024
+NAME_RE = re.compile(r"[^a-z0-9-]+")
+
+# Refuse to follow redirects — a 30x from an allow-listed host could otherwise
+# bounce us to an attacker host (the host check only sees the original URL).
+# With redirects disabled a 3xx raises HTTPError, caught below → skipped.
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+_opener = build_opener(_NoRedirect)
+
+skills_dir = os.path.realpath(os.environ["PERKOS_SKILLS_DIR"])
+try:
+    raw = base64.b64decode(os.environ["PERKOS_AGENT_SKILLS_B64"])
+    entries = json.loads(raw)
+except Exception as e:
+    print(f"perkos-entrypoint: bad PERKOS_AGENT_SKILLS_B64 ({e}) — skipping")
+    sys.exit(0)
+
+if not isinstance(entries, list):
+    print("perkos-entrypoint: skills payload not a list — skipping")
+    sys.exit(0)
+
+installed = 0
+for ent in entries[:40]:
+    try:
+        name = NAME_RE.sub("-", str(ent.get("name", "")).lower()).strip("-")[:64]
+        url = str(ent.get("url", ""))
+        if not name:
+            continue
+        u = urlparse(url)
+        if u.scheme != "https" or u.hostname not in ALLOWED_HOSTS:
+            print(f"perkos-entrypoint: skill '{name}' url host not allowed — skipped")
+            continue
+        req = Request(url, headers={"User-Agent": "perkos-entrypoint"})
+        with _opener.open(req, timeout=15) as resp:
+            if getattr(resp, "status", 200) != 200:
+                print(f"perkos-entrypoint: skill '{name}' non-200 — skipped")
+                continue
+            data = resp.read(MAX_BYTES + 1)
+        if len(data) > MAX_BYTES:
+            print(f"perkos-entrypoint: skill '{name}' too large — skipped")
+            continue
+        dest_dir = os.path.join(skills_dir, name)
+        # Defense vs a snapshot-planted symlink redirecting the write: the
+        # resolved dest must stay inside skills_dir, and we open with
+        # O_NOFOLLOW so a symlink at SKILL.md is refused.
+        if os.path.realpath(dest_dir) != os.path.join(skills_dir, name):
+            print(f"perkos-entrypoint: skill '{name}' path escapes skills dir — skipped")
+            continue
+        os.makedirs(dest_dir, exist_ok=True)
+        dest_file = os.path.join(dest_dir, "SKILL.md")
+        try:
+            os.unlink(dest_file)
+        except FileNotFoundError:
+            pass
+        fd = os.open(dest_file, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_TRUNC, 0o644)
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        installed += 1
+        print(f"perkos-entrypoint: skill written {name}/SKILL.md ({len(data)} bytes)")
+    except Exception as e:
+        print(f"perkos-entrypoint: skill fetch failed ({e}) — continuing")
+
+print(f"perkos-entrypoint: installed {installed} skill pack file(s)")
+PYSKILLS
+  chown -R 10000:10000 "${HERMES_HOME:-/opt/data}/skills" 2>/dev/null || true
+fi
+
 echo "perkos-entrypoint: delegating to upstream entrypoint..."
 
 # Upstream Hermes oscillates between two ENTRYPOINT shapes across
