@@ -96,7 +96,7 @@ if run_container perkos-openclaw-smoke-baseline-$$; then
   jqok "baseline: provider baseUrl substituted"         '(.models.providers | to_entries[0].value.baseUrl) == "https://api.llm.perkos.xyz"'
   jqok "baseline: provider apiKey substituted"          '(.models.providers | to_entries[0].value.apiKey) == "dummy-llm-key"'
   jqok "baseline: agent id header substituted"          '(.models.providers | to_entries[0].value.headers["x-agent-id"]) == "smoke-test"'
-  jqok "baseline: default provider is ollama"           '(.models.providers | keys[0]) == "ollama"'
+  jqok "baseline: default provider key is ollama"       '(.models.providers | has("ollama"))'
   jqok "baseline: no unsubstituted __PLACEHOLDER__ left" \
        '[.. | strings | select(startswith("__") and endswith("__"))] | length == 0'
 

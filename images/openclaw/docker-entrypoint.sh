@@ -96,6 +96,13 @@ jq \
     | gsub("__PERKOS_LLM_PROVIDER__"; $llm_provider)
     | gsub("__PERKOS_GATEWAY_API_KEY__";   $gateway_key)
   )
+  # The provider object KEY is literally "ollama" in the template (gsub
+  # only rewrites string VALUES, not object keys). Rename it to the real
+  # provider name when BYOK uses a different one, so it matches the
+  # "<provider>/<model>" primary above.
+  | if $llm_provider != "ollama"
+    then .models.providers |= (with_entries(.key = $llm_provider))
+    else . end
   ' /opt/perkos/openclaw.template.json > "$OPENCLAW_CONFIG_PATH"
 
 chmod 600 "$OPENCLAW_CONFIG_PATH"

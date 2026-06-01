@@ -24,7 +24,7 @@
   },
   "models": {
     "providers": {
-      "__PERKOS_LLM_PROVIDER__": {
+      "ollama": {
         "baseUrl": "__PERKOS_LLM_BASE_URL__",
         "apiKey": "__PERKOS_LLM_API_KEY__",
         "api": "__PERKOS_LLM_API__",
