@@ -3,7 +3,7 @@
     "defaults": {
       "workspace": "/home/node/.openclaw/workspace",
       "model": {
-        "primary": "ollama/__PERKOS_LLM_DEFAULT_MODEL__"
+        "primary": "__PERKOS_LLM_PROVIDER__/__PERKOS_LLM_DEFAULT_MODEL__"
       }
     }
   },
@@ -24,7 +24,7 @@
   },
   "models": {
     "providers": {
-      "ollama": {
+      "__PERKOS_LLM_PROVIDER__": {
         "baseUrl": "__PERKOS_LLM_BASE_URL__",
         "apiKey": "__PERKOS_LLM_API_KEY__",
         "api": "__PERKOS_LLM_API__",
