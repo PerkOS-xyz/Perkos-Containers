@@ -283,5 +283,7 @@ jobs:
           RUNTIME_INGEST_KEY: ${{ secrets.RUNTIME_INGEST_KEY }}
           FIREBASE_WEB_API_KEY: ${{ vars.FIREBASE_WEB_API_KEY }}
         run: |
-          ./tests/behavior/run.sh openclaw "${{ steps.tags.outputs.openclaw }}"
-          ./tests/behavior/run.sh hermes   "${{ steps.tags.outputs.hermes }}"
+          rc=0
+          ./tests/behavior/run.sh openclaw "${{ steps.tags.outputs.openclaw }}" || rc=1
+          ./tests/behavior/run.sh hermes   "${{ steps.tags.outputs.hermes }}"   || rc=1
+          exit $rc

@@ -73,11 +73,13 @@ if [ -z "${FIREBASE_WEB_API_KEY:-}" ]; then
 fi
 
 # 1. Mint a custom token for the service wallet (API-key authed).
-CUSTOM="$(curl -sS -X POST "${API}/internal/runtimes/test-credentials" \
+CRED="$(curl -sS -X POST "${API}/internal/runtimes/test-credentials" \
   -H "x-runtime-ingest-key: ${RUNTIME_INGEST_KEY}" \
-  -H "content-type: application/json" | jq -r '.customToken // empty')"
-if [ -z "$CUSTOM" ]; then
-  add_check "mint-token" false "API did not return a custom token (check BEHAVIOR_TEST_WALLET)"
+  -H "content-type: application/json")"
+CUSTOM="$(jq -r '.customToken // empty' <<<"$CRED")"
+WALLET="$(jq -r '.wallet // empty' <<<"$CRED")"
+if [ -z "$CUSTOM" ] || [ -z "$WALLET" ]; then
+  add_check "mint-token" false "API did not return custom token/wallet (check BEHAVIOR_TEST_WALLET)"
   finish "fail"
 fi
 # 2. Exchange custom token → short-lived ID token via Firebase Auth REST.
@@ -97,8 +99,8 @@ NAME="bt-${RUNTIME_LC}-$(date -u +%H%M%S)"
 # --- launch ---------------------------------------------------------------
 LAUNCH="$(curl -sS -X POST "${API}/agents/launch" -H "$AUTH" \
   -H "content-type: application/json" \
-  --data "$(jq -nc --arg r "$RUNTIME" --arg n "$NAME" --arg tag "$PRIMARY_TAG" \
-    '{runtime:$r, name:$n, imageTag:$tag, deployMode:"perkos-managed"}')")"
+  --data "$(jq -nc --arg w "$WALLET" --arg r "$RUNTIME" --arg n "$NAME" --arg tag "$PRIMARY_TAG" \
+    '{walletAddress:$w, runtime:$r, name:$n, imageTag:$tag, deployMode:"perkos-managed"}')")"
 AGENT_ID="$(jq -r '.launchId // .result.agent.id // empty' <<<"$LAUNCH")"
 JOB_ID="$(jq -r '.result.jobId // empty' <<<"$LAUNCH")"
 if [ -z "$AGENT_ID" ]; then
@@ -139,8 +141,8 @@ ALL_OK=true
 for i in "${!PROMPTS[@]}"; do
   REPLY="$(curl -sS -X POST "${API}/assistant" -H "$AUTH" \
     -H "content-type: application/json" \
-    --data "$(jq -nc --arg m "${PROMPTS[$i]}" --arg a "$AGENT_ID" \
-      '{message:$m, agentId:$a}')" | jq -r '.reply // empty')"
+    --data "$(jq -nc --arg w "$WALLET" --arg m "${PROMPTS[$i]}" --arg a "$AGENT_ID" \
+      '{walletAddress:$w, message:$m, agentId:$a}')" | jq -r '.reply // empty')"
   LEN="${#REPLY}"
   if [ -z "$REPLY" ] || [ "$LEN" -lt "$MIN_LEN" ]; then
     add_check "${NAMES[$i]}" false "empty/short reply (len=${LEN})"
