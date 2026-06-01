@@ -90,6 +90,24 @@ chmod 600 "$OPENCLAW_CONFIG_PATH"
 echo "perkos-entrypoint: wrote $OPENCLAW_CONFIG_PATH (agent=$PERKOS_AGENT_NAME id=$PERKOS_AGENT_ID)"
 echo "perkos-entrypoint: channel plugins — telegram=$TELEGRAM_PLUGIN_ENABLED slack=$SLACK_PLUGIN_ENABLED discord=$DISCORD_PLUGIN_ENABLED"
 
+# Bundled PerkOS skills (baked at /opt/perkos-skills/ in the Dockerfile).
+# Copy them into the workspace skills dir where OpenClaw auto-discovers
+# skills. perkos-platform-tools ships perkos_tools.py, which the model
+# runs to drive the project job board (createTask, updateTaskStatus, …)
+# via the bridge's local tools-token listener. Done before the open-source
+# skills fetch below so user picks layer on top.
+WORKSPACE_DIR="${OPENCLAW_WORKSPACE:-$CONFIG_DIR/workspace}"
+if [ -d /opt/perkos-skills ]; then
+  mkdir -p "$WORKSPACE_DIR/skills"
+  for d in /opt/perkos-skills/*/; do
+    [ -d "$d" ] || continue
+    n=$(basename "$d")
+    rm -rf "$WORKSPACE_DIR/skills/$n"
+    cp -r "$d" "$WORKSPACE_DIR/skills/$n"
+  done
+  echo "perkos-entrypoint: bundled skills installed: $(ls "$WORKSPACE_DIR/skills" 2>/dev/null | tr '\n' ' ')"
+fi
+
 # Persona from env (PerkOS template SOUL).
 #
 # The provisioner base64's the chosen template's rendered markdown into
