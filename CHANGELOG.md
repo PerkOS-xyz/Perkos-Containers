@@ -33,12 +33,31 @@ release instead of a manual `:latest` rebuild:
   perkos-a2a bridge dialing out and registering as `bridgeConnected` (via
   heartbeat) → clean teardown. **Fail-closed**: only a green lifecycle lets an
   admin later promote the image to the public channel.
-  - Reply-QUALITY (e.g. catching Hermes `(empty)`) is **not** auto-gated yet:
-    agent replies are async over chat/Transport (WSS) and there is no
-    synchronous REST round-trip (`/assistant/chat` is the platform Concierge,
-    not the agent runtime). Enterprise follow-up: a server-side
-    `POST /internal/runtimes/probe-agent` A2A round-trip that returns the
-    reply for assertion. Until then reply-quality is a monitored signal.
+  - Reply-QUALITY is now also gated: after the bridge connects, the test
+    calls PerkOS-API `POST /internal/runtimes/probe-agent`, which does a
+    synchronous A2A round-trip over Transport to the agent by name and returns
+    its reply. The test asserts a substantive (non-empty, ≥20 char) reply to
+    two canonical prompts (incl. a PM/plan-and-delegate prompt) — catching a
+    runtime that boots+connects but answers empty (Hermes/Kimi). Pass now
+    requires the full lifecycle AND substantive replies.
+
+#### Validation history (e2e dispatch runs, 2026-06-01)
+
+The behavior test was hardened by repeated real `workflow_dispatch` runs; each
+caught a concrete bug, fail-closed every time, and left ECS clean:
+- `-e2e`: missing `walletAddress` on launch (test bug) → fixed.
+- fix run: PerkOS-API `createJob` persisted `undefined` soul → Firestore
+  rejected it (prod bug, any soul-less launch) → `stripUndefined()`.
+- `-e2e2`: real provision green (launch→ready→teardown), replies empty →
+  diagnosed: wrong endpoint (`/assistant` vs the Concierge) + async reply path.
+- `-e2e3`: added bridge-connected warmup; lifecycle green.
+- final: probe-agent A2A round-trip wired for true reply-quality gating.
+
+#### CI cron disabled
+
+The weekly `schedule` was removed — releases run on `workflow_dispatch` or on
+push to `images/**`/`tests/**`. Restore the `schedule:` block in the workflow
+to re-enable the Monday 06:00 UTC run.
 - **A2A pin**: workflow bumped `PERKOS_A2A_VERSION` 0.11.0 → 0.12.0 to match
   the bridge Dockerfile default and the Assistant compose (all three 0.12.0).
 

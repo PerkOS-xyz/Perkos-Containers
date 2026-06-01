@@ -148,24 +148,38 @@ if [ "$WARM" != true ]; then
 fi
 add_check "bridge-warmup" true ""
 
-# --- pass criteria: operational lifecycle ---------------------------------
-# We gate on the verifiable real-ECS lifecycle: the image launched, the task
-# reached RUNNING, AND the runtime's perkos-a2a bridge dialed out and
-# registered as connected to Transport (bridgeConnected via heartbeat). That
-# is a strong health signal for a freshly-built image.
-#
-# Reply-QUALITY (catching e.g. Hermes returning empty) is NOT gated here:
-# agent replies flow asynchronously over chat.perkos.xyz / Transport (WSS),
-# and there is no synchronous REST round-trip to read them — /assistant/chat
-# is the platform Concierge LLM, not the provisioned agent's runtime. The
-# enterprise follow-up is a server-side probe endpoint
-# (POST /internal/runtimes/probe-agent) that performs the A2A round-trip and
-# returns the reply; until it lands, reply-quality stays a monitored signal,
-# not an automated gate. See CHANGELOG.
+# --- reply quality: real A2A round-trip via the probe endpoint ------------
+# Now that the bridge is connected, exercise the agent's REAL reply path: the
+# API's /internal/runtimes/probe-agent does a synchronous A2A round-trip over
+# Transport (register → task → task_response) to the agent by name and returns
+# its reply. This catches a runtime that boots+connects but answers empty
+# (e.g. Hermes/Kimi). Addressed by the launch name ($NAME).
+PROMPTS=(
+  "Reply with a one-sentence confirmation that you are online."
+  "You are the PM. Break the goal 'ship a landing page' into 3 delegated tasks with owners. Be concrete."
+)
+NAMES=("basic-reply" "${RUNTIME_LC}-non-empty-reply")
+MIN_LEN=20
+ALL_OK=true
+for i in "${!PROMPTS[@]}"; do
+  RES="$(curl -sS -X POST "${API}/internal/runtimes/probe-agent" \
+    -H "x-runtime-ingest-key: ${RUNTIME_INGEST_KEY}" -H "content-type: application/json" \
+    --data "$(jq -nc --arg a "$NAME" --arg p "${PROMPTS[$i]}" \
+      '{agentName:$a, prompt:$p, timeoutMs:60000}')")"
+  OKF="$(jq -r '.ok // false' <<<"$RES")"
+  REPLY="$(jq -r '.reply // ""' <<<"$RES")"
+  LEN="${#REPLY}"
+  if [ "$OKF" = "true" ] && [ "$LEN" -ge "$MIN_LEN" ]; then
+    add_check "${NAMES[$i]}" true "reply len=${LEN}"
+  else
+    add_check "${NAMES[$i]}" false "$(jq -r '.detail // "no reply"' <<<"$RES") (len=${LEN})"
+    ALL_OK=false
+  fi
+done
 
 # --- teardown -------------------------------------------------------------
 curl -sS -X DELETE "${API}/agents/${AGENT_ID}" -H "$AUTH" >/dev/null || true
 add_check "teardown" true ""
 
-# All lifecycle checks passed → the image is healthy enough to promote.
-finish "pass"
+# Pass requires the full lifecycle AND substantive replies.
+[ "$ALL_OK" = true ] && finish "pass" || finish "fail"
