@@ -33,13 +33,14 @@ release instead of a manual `:latest` rebuild:
   perkos-a2a bridge dialing out and registering as `bridgeConnected` (via
   heartbeat) → clean teardown. **Fail-closed**: only a green lifecycle lets an
   admin later promote the image to the public channel.
-  - Reply-QUALITY is now also gated: after the bridge connects, the test
-    calls PerkOS-API `POST /internal/runtimes/probe-agent`, which does a
-    synchronous A2A round-trip over Transport to the agent by name and returns
-    its reply. The test asserts a substantive (non-empty, ≥20 char) reply to
-    two canonical prompts (incl. a PM/plan-and-delegate prompt) — catching a
-    runtime that boots+connects but answers empty (Hermes/Kimi). Pass now
-    requires the full lifecycle AND substantive replies.
+  - Reply-QUALITY (ADVISORY): after the bridge connects, the test calls
+    PerkOS-API `POST /internal/runtimes/probe-agent` (synchronous A2A
+    round-trip over Transport) and records the result as a diagnostic. It does
+    **not** gate yet: e2e confirmed the probe times out because the co-located
+    bridge + `A2A_HERMES_AUTO_REPLY` (perkos-a2a 0.12.0) posts the runtime
+    reply to chat instead of returning an A2A `task_response`. Follow-up in
+    PerkOS-A2A: emit a `task_response` for relay-originated tasks (then flip
+    this check to gating). The gate remains the operational lifecycle.
 
 #### Validation history (e2e dispatch runs, 2026-06-01)
 
