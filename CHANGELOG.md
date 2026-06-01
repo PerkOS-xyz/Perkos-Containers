@@ -28,11 +28,17 @@ release instead of a manual `:latest` rebuild:
   `RUNTIME_INGEST_KEY`). The image lands on the **beta** channel with its
   resolved upstream + build status and a *pending* behavior test.
 - **Behavior test** (`tests/behavior/run.sh`, job `behavior-test`):
-  provisions an ephemeral agent from each freshly-pushed tag, sends canonical
-  prompts (incl. a PM/plan-and-delegate prompt that reproduces the Hermes
-  `(empty)` failure), asserts substantive replies, tears it down, and posts
-  the verdict to `/internal/runtimes/behavior-test`. **Fail-closed**: only a
-  genuine pass lets an admin later promote the image to the public channel.
+  provisions an ephemeral agent from each freshly-pushed tag in real ECS and
+  gates on the **operational lifecycle** — launch → task RUNNING → the
+  perkos-a2a bridge dialing out and registering as `bridgeConnected` (via
+  heartbeat) → clean teardown. **Fail-closed**: only a green lifecycle lets an
+  admin later promote the image to the public channel.
+  - Reply-QUALITY (e.g. catching Hermes `(empty)`) is **not** auto-gated yet:
+    agent replies are async over chat/Transport (WSS) and there is no
+    synchronous REST round-trip (`/assistant/chat` is the platform Concierge,
+    not the agent runtime). Enterprise follow-up: a server-side
+    `POST /internal/runtimes/probe-agent` A2A round-trip that returns the
+    reply for assertion. Until then reply-quality is a monitored signal.
 - **A2A pin**: workflow bumped `PERKOS_A2A_VERSION` 0.11.0 → 0.12.0 to match
   the bridge Dockerfile default and the Assistant compose (all three 0.12.0).
 
