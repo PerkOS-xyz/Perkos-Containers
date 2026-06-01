@@ -130,6 +130,24 @@ if [ "$READY" != true ]; then
 fi
 add_check "provision-ready" true ""
 
+# --- warm up: wait for the bridge to connect before prompting -------------
+# ECS "ready" only means the task is RUNNING; the runtime + perkos-a2a bridge
+# still need to boot and dial Transport before they can answer. Poll the
+# agent doc's bridgeConnected flag (set by the bridge heartbeat) so we don't
+# prompt a cold agent and record a false "empty reply".
+WARM=false
+for _ in $(seq 1 36); do   # ~3 min max (5s * 36)
+  BC="$(curl -sS "${API}/agents/${AGENT_ID}" -H "$AUTH" | jq -r '.bridgeConnected // false')"
+  [ "$BC" = "true" ] && { WARM=true; break; }
+  sleep 5
+done
+if [ "$WARM" != true ]; then
+  add_check "bridge-warmup" false "bridge did not connect within timeout"
+  curl -sS -X DELETE "${API}/agents/${AGENT_ID}" -H "$AUTH" >/dev/null || true
+  finish "fail"
+fi
+add_check "bridge-warmup" true ""
+
 # --- prompts (assert substantive, non-empty replies) ---------------------
 PROMPTS=(
   "Reply with a one-sentence confirmation that you are online."
