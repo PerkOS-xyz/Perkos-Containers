@@ -90,9 +90,13 @@ if run_container perkos-openclaw-smoke-baseline-$$; then
   jqok "baseline: gateway is local + token-auth"        '.gateway.mode == "local" and .gateway.auth.mode == "token"'
   jqok "baseline: gateway token substituted (non-empty, no placeholder)" \
        '(.gateway.auth.token | type == "string" and length > 0 and (startswith("__") | not))'
-  jqok "baseline: ollama baseUrl substituted"           '.models.providers.ollama.baseUrl == "https://api.llm.perkos.xyz"'
-  jqok "baseline: ollama apiKey substituted"            '.models.providers.ollama.apiKey == "dummy-llm-key"'
-  jqok "baseline: agent id header substituted"          '.models.providers.ollama.headers["x-agent-id"] == "smoke-test"'
+  # Provider key is dynamic (__PERKOS_LLM_PROVIDER__ → "ollama" by default,
+  # "openai" for BYOK). Read the first (only) provider rather than assuming
+  # its name.
+  jqok "baseline: provider baseUrl substituted"         '(.models.providers | to_entries[0].value.baseUrl) == "https://api.llm.perkos.xyz"'
+  jqok "baseline: provider apiKey substituted"          '(.models.providers | to_entries[0].value.apiKey) == "dummy-llm-key"'
+  jqok "baseline: agent id header substituted"          '(.models.providers | to_entries[0].value.headers["x-agent-id"]) == "smoke-test"'
+  jqok "baseline: default provider is ollama"           '(.models.providers | keys[0]) == "ollama"'
   jqok "baseline: no unsubstituted __PLACEHOLDER__ left" \
        '[.. | strings | select(startswith("__") and endswith("__"))] | length == 0'
 
