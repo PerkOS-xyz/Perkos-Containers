@@ -33,19 +33,21 @@ release instead of a manual `:latest` rebuild:
   perkos-a2a bridge dialing out and registering as `bridgeConnected` (via
   heartbeat) → clean teardown. **Fail-closed**: only a green lifecycle lets an
   admin later promote the image to the public channel.
-  - Reply-QUALITY (ADVISORY — bridge bug found): the test calls PerkOS-API
-    `POST /internal/runtimes/probe-agent` (relay discover-gate → task →
-    task_response) and records the result as a diagnostic. **Not gating**:
-    e2e + Transport logs proved the probe infra works (register, heartbeat,
-    discover, route) but the **freshly-provisioned agent's relay connection
-    drops exactly when the inbound task is delivered** — Transport logs show
-    `route task: perkos-ci-probe -> bt-openclaw-… ` immediately followed by
-    `agent disconnected: bt-openclaw-…` (then a reconnect). The task_response
-    is lost → probe times out. Root cause is bridge-side (perkos-a2a relay
-    connection instability on inbound task), so reply-quality stays advisory
-    until that's fixed; the gate is the operational lifecycle. Probe-side
-    hardening already done: discover-gate, 25s heartbeats, A2A Task parsing,
-    `(empty reply)` sentinel, timeoutMs cap raised.
+  - Reply-QUALITY (GATING — root cause fixed): the test calls PerkOS-API
+    `POST /internal/runtimes/probe-agent` (relay discover-gate → A2A task →
+    task_response) and asserts a substantive (non-empty, ≥20 char) reply to
+    two canonical prompts. The "flap" turned out to be **the probe crashing the
+    bridge**: CloudWatch bridge logs showed `Task … received` →
+    `TypeError: Cannot read properties of undefined (reading 'parts')` at
+    `server.js:234` → Node process crash → reconnect. The bridge feeds the
+    relay `payload` into A2A `message/send` (`params.message.parts`); our bare
+    `{text}` payload made `message` undefined. Fix (probe-side, no bridge
+    rebuild): send the proper A2A message envelope
+    (`{message:{role,kind,messageId,parts:[{kind:text,text}],metadata}}`).
+    Validated against the persistent `Perkos-Hermes-Tester` bridge (real 216-char
+    reply, no crash). Probe also hardened: discover-gate, 25s heartbeats, A2A
+    Task reply parsing, `(empty reply)` sentinel. Pass now requires lifecycle
+    AND substantive replies.
 
 #### Validation history (e2e dispatch runs, 2026-06-01)
 

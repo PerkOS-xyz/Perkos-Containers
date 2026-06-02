@@ -148,32 +148,36 @@ if [ "$WARM" != true ]; then
 fi
 add_check "bridge-warmup" true ""
 
-# --- reply quality (ADVISORY): real A2A round-trip via the probe endpoint ---
-# Exercises the agent's real reply path (API /internal/runtimes/probe-agent:
-# relay discover-gate → task → task_response). Recorded as a diagnostic, NOT
-# gating, because of a confirmed bridge bug: a freshly-provisioned agent's
-# relay connection DROPS right when the inbound task is delivered (Transport
-# logs: "route task ... -> <agent>" immediately followed by "agent
-# disconnected: <agent>"), so the task_response is lost and the probe times
-# out. The fix is in PerkOS-A2A (stabilise the bridge's relay connection on
-# inbound task delivery); until it lands, the GATE is the operational
-# lifecycle above. Short timeout — this is only a diagnostic now.
-PROMPT="Reply with a one-sentence confirmation that you are online and ready."
-RES="$(curl -sS --max-time 75 -X POST "${API}/internal/runtimes/probe-agent" \
-  -H "x-runtime-ingest-key: ${RUNTIME_INGEST_KEY}" -H "content-type: application/json" \
-  --data "$(jq -nc --arg a "$NAME" --arg p "$PROMPT" \
-    '{agentName:$a, prompt:$p, timeoutMs:60000}')" 2>/dev/null || echo '{}')"
-REPLY="$(jq -r '.reply // ""' <<<"$RES")"
-if [ "$(jq -r '.ok // false' <<<"$RES")" = "true" ] && [ "${#REPLY}" -ge 20 ]; then
-  add_check "reply-probe(advisory)" true "reply len=${#REPLY}"
-else
-  add_check "reply-probe(advisory)" true "no reply ($(jq -r '.detail // "n/a"' <<<"$RES")) — bridge relay flap, see PerkOS-A2A follow-up"
-fi
+# --- reply quality (GATING): real A2A round-trip via the probe endpoint -----
+# The API's /internal/runtimes/probe-agent waits (relay discover-gate) until
+# the agent is connected, sends a proper A2A message, and returns the
+# correlated task_response. Asserts a substantive (non-empty, >=20 char) reply
+# to two canonical prompts — catching a runtime that connects but answers empty
+# (the "(empty reply from <runtime>)" sentinel is treated as empty). Generous
+# window for a fresh agent's relay-join latency (Hermes ~2-3 min boot).
+PROMPTS=(
+  "Reply with a one-sentence confirmation that you are online and ready."
+  "You are the PM. Break the goal 'ship a landing page' into 3 delegated tasks with owners. Be concrete."
+)
+NAMES=("basic-reply" "${RUNTIME_LC}-non-empty-reply")
+ALL_OK=true
+for i in "${!PROMPTS[@]}"; do
+  RES="$(curl -sS --max-time 160 -X POST "${API}/internal/runtimes/probe-agent" \
+    -H "x-runtime-ingest-key: ${RUNTIME_INGEST_KEY}" -H "content-type: application/json" \
+    --data "$(jq -nc --arg a "$NAME" --arg p "${PROMPTS[$i]}" \
+      '{agentName:$a, prompt:$p, timeoutMs:150000}')" 2>/dev/null || echo '{}')"
+  REPLY="$(jq -r '.reply // ""' <<<"$RES")"
+  if [ "$(jq -r '.ok // false' <<<"$RES")" = "true" ] && [ "${#REPLY}" -ge 20 ]; then
+    add_check "${NAMES[$i]}" true "reply len=${#REPLY}"
+  else
+    add_check "${NAMES[$i]}" false "$(jq -r '.detail // "no reply"' <<<"$RES")"
+    ALL_OK=false
+  fi
+done
 
 # --- teardown -------------------------------------------------------------
 curl -sS -X DELETE "${API}/agents/${AGENT_ID}" -H "$AUTH" >/dev/null || true
 add_check "teardown" true ""
 
-# Gate = operational lifecycle (launch → ready → bridge-connected → teardown);
-# reply-probe is advisory until the bridge relay-flap is fixed (PerkOS-A2A).
-finish "pass"
+# Pass requires the full lifecycle AND substantive replies.
+[ "$ALL_OK" = true ] && finish "pass" || finish "fail"
