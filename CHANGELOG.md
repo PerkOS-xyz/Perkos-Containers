@@ -7,6 +7,22 @@ captures *what shipped* and the *why* — the equivalent of a good commit body,
 collected here so operators don't have to spelunk `git log`. Tag-style
 versions are optional; date-stamped sections are fine for in-flight work.
 
+## 2026-06-02
+
+### Fix: bump A2A pin 0.12.0 → 0.12.7 (multi-agent reply loop regression)
+
+`build-push-ecr.yml` env + `images/perkos-a2a-bridge/Dockerfile` ARG pinned
+`PERKOS_A2A_VERSION=0.12.0`, which only added the `A2A_HERMES_AUTO_REPLY`
+flag — the reply loop itself only works from 0.12.5+ (`0.12.5` task_response
+carries the real runtime text, `0.12.6` raises the local-task wait 45s→240s,
+`0.12.7` short-circuits the A2A runtime prompt when auto-reply is on). 0.12.0
+regressed live multi-agent behavior: chat turns returned "No response from
+OpenClaw" and A2A tasks returned the queued-artifact placeholder with
+platform-tools not firing. Bumped both to **0.12.7** (keeps the auto-reply
+flag, restores the fixes). `deploy/perkos-assistant/docker-compose.yml` should
+be bumped to 0.12.7 too for lockstep. Found while re-running the real-agent
+orchestration test on BYOK gpt-4o images.
+
 ## 2026-06-01
 
 ### Weekly reproducible releases: digest pin + beta channel + behavior test
