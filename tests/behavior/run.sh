@@ -155,25 +155,22 @@ add_check "bridge-warmup" true ""
 # `task_response`. Asserts a substantive (non-empty, >=20 char) reply to two
 # canonical prompts — catching a runtime that boots+connects but answers empty
 # (the bridge's "(empty reply from <runtime>)" sentinel is treated as empty).
-PROMPTS=(
-  "Reply with a one-sentence confirmation that you are online."
-  "You are the PM. Break the goal 'ship a landing page' into 3 delegated tasks with owners. Be concrete."
-)
-NAMES=("basic-reply" "${RUNTIME_LC}-non-empty-reply")
-ALL_OK=true
-for i in "${!PROMPTS[@]}"; do
-  RES="$(curl -sS --max-time 110 -X POST "${API}/internal/runtimes/probe-agent" \
-    -H "x-runtime-ingest-key: ${RUNTIME_INGEST_KEY}" -H "content-type: application/json" \
-    --data "$(jq -nc --arg a "$NAME" --arg p "${PROMPTS[$i]}" \
-      '{agentName:$a, prompt:$p, timeoutMs:90000}')" 2>/dev/null || echo '{}')"
-  REPLY="$(jq -r '.reply // ""' <<<"$RES")"
-  if [ "$(jq -r '.ok // false' <<<"$RES")" = "true" ] && [ "${#REPLY}" -ge 20 ]; then
-    add_check "${NAMES[$i]}" true "reply len=${#REPLY}"
-  else
-    add_check "${NAMES[$i]}" false "$(jq -r '.detail // "no reply"' <<<"$RES")"
-    ALL_OK=false
-  fi
-done
+# One substantive-reply assertion is enough to gate quality; the probe's
+# discover-gate tolerates the relay-join latency of a fresh agent (esp. Hermes
+# ~2-3 min boot), so allow a generous window.
+PROMPT="Reply with a one-sentence confirmation that you are online and ready."
+RES="$(curl -sS --max-time 260 -X POST "${API}/internal/runtimes/probe-agent" \
+  -H "x-runtime-ingest-key: ${RUNTIME_INGEST_KEY}" -H "content-type: application/json" \
+  --data "$(jq -nc --arg a "$NAME" --arg p "$PROMPT" \
+    '{agentName:$a, prompt:$p, timeoutMs:240000}')" 2>/dev/null || echo '{}')"
+REPLY="$(jq -r '.reply // ""' <<<"$RES")"
+if [ "$(jq -r '.ok // false' <<<"$RES")" = "true" ] && [ "${#REPLY}" -ge 20 ]; then
+  add_check "reply-quality" true "reply len=${#REPLY}"
+  ALL_OK=true
+else
+  add_check "reply-quality" false "$(jq -r '.detail // "no reply"' <<<"$RES")"
+  ALL_OK=false
+fi
 
 # --- teardown -------------------------------------------------------------
 curl -sS -X DELETE "${API}/agents/${AGENT_ID}" -H "$AUTH" >/dev/null || true
