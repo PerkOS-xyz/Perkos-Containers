@@ -4,6 +4,10 @@
       "workspace": "/home/node/.openclaw/workspace",
       "model": {
         "primary": "__PERKOS_LLM_PROVIDER__/__PERKOS_LLM_DEFAULT_MODEL__"
+      },
+      "thinkingDefault": "off",
+      "memorySearch": {
+        "enabled": false
       }
     }
   },

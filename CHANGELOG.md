@@ -9,6 +9,22 @@ versions are optional; date-stamped sections are fine for in-flight work.
 
 ## 2026-06-02
 
+### OpenClaw — unblock BYOK tool execution (thinkingDefault off + memorySearch off)
+
+`images/openclaw/config/openclaw.template.json` `agents.defaults` gained
+`thinkingDefault: "off"` and `memorySearch.enabled: false`. Two BYOK-gpt-4o
+blockers seen live: (1) OpenClaw spawned a tool-execution **subagent** with
+thinking `"minimal"`, which `byok/gpt-4o` rejects (`Thinking level "minimal"
+is not supported … Use one of: off`) → the subagent died and `createTask`
+never ran (job board stayed empty though the model narrated creating tasks).
+`thinkingDefault: "off"` is read by `resolveThinkingDefault` for the agent
+AND subagents, so no unsupported level is requested. (2) OpenClaw's memory
+search bootstrap is hardcoded to provider `openai`; with our provider named
+`byok` it errored `No API key found for provider "openai"` on every turn
+(noise + the model believed it couldn't access context). Disabling memory
+search removes the broken-for-BYOK feature; re-enable later with a real
+embeddings provider. Both defaults are safe for the gateway/kimi path too.
+
 ### Fix: bump A2A pin 0.12.0 → 0.12.7 (multi-agent reply loop regression)
 
 `build-push-ecr.yml` env + `images/perkos-a2a-bridge/Dockerfile` ARG pinned
