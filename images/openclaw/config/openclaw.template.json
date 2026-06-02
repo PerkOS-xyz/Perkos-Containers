@@ -11,6 +11,14 @@
       }
     }
   },
+  "mcp": {
+    "servers": {
+      "perkos-board": {
+        "url": "http://127.0.0.1:5071",
+        "transport": "streamable-http"
+      }
+    }
+  },
   "gateway": {
     "port": 3000,
     "mode": "local",

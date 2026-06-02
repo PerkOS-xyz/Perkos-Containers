@@ -40,6 +40,14 @@ model:
   # "codex_responses" + a Codex auth profile — out of scope here.)
   api_mode: chat_completions
 
+# PerkOS job board exposed as native MCP tools by the perkos-a2a bridge
+# (loopback, shared task netns). The model calls createTask/updateTaskStatus/
+# listProjectTasks/postProjectMessage as first-class tools — no execute_code,
+# no approval gate. The bridge mints the wallet-scoped JWT internally.
+mcp_servers:
+  perkos-board:
+    url: http://127.0.0.1:5071
+
 agent:
   id: ${PERKOS_AGENT_ID}
   name: ${PERKOS_AGENT_NAME}
