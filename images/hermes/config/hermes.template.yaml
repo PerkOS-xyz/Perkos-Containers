@@ -21,11 +21,20 @@ model:
   # gateway, so this resolves to a loopback HTTPS hop via Caddy.
   base_url: ${PERKOS_LLM_BASE_URL}
 
-  # Tell Hermes to read the API key from this env var name. The actual
-  # key value lives in PERKOS_LLM_API_KEY (set on the container env);
-  # we don't bake it into this file so the rendered config can be
-  # logged/inspected without leaking secrets.
-  api_key_env: PERKOS_LLM_API_KEY
+  # API key for the gateway. Hermes' top-level `model:` block reads an INLINE
+  # `api_key` (runtime_provider.py direct-alias path → candidate 1
+  # `explicit_api_key`). TRAP: `api_key_env` is NOT honored in the `model:`
+  # block — it's only a documented alias for `key_env` INSIDE a
+  # `custom_providers:`/`providers:` entry (config.py
+  # `_normalize_custom_provider_entry`). With `provider: custom` + a non-OpenAI
+  # base_url and no inline api_key, Hermes falls through to the
+  # "no-key-required" sentinel → the gateway's nginx `auth_request` rejects it
+  # (401). So expand the key inline. The entrypoint already `require`s
+  # PERKOS_LLM_API_KEY, so this is always populated. (Yes, the key lands in the
+  # rendered /opt/data/config.yaml — chmod 644, container-internal, never
+  # echoed to logs; the provisioner also exposes it via the host-derived
+  # PERKOS_API_KEY env so already-built images work without a rebuild.)
+  api_key: ${PERKOS_LLM_API_KEY}
 
   # Wire protocol. MUST be explicit for BYOK: Hermes' runtime_provider.py
   # auto-detects api_mode from the base_url host, and ANY api.openai.com
