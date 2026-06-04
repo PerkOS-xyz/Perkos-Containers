@@ -271,6 +271,24 @@ PYSKILLS
   chown -R 10000:10000 "${HERMES_HOME:-/opt/data}/skills" 2>/dev/null || true
 fi
 
+# ── Periodic state snapshot (hibernation backup) ────────────────────────────
+# Snapshot HERMES_HOME → S3 (client-side encrypted) every
+# PERKOS_SNAPSHOT_INTERVAL_SEC so a hibernated agent can be restored/cloned on
+# wake. Backgrounded before we hand off to the runtime; it re-parents to PID 1
+# (s6) and keeps running. No-op unless PERKOS_HIBERNATION_S3_URI + _KMS_KEY are
+# set. restore.sh already ran above, so the first snapshot reflects the restored
+# state. Clean snapshots happen while the agent is idle (the common
+# auto-hibernation case); a snapshot-on-stop hook for point-in-time precision is
+# a future refinement. See HIBERNATION-SNAPSHOT-DESIGN.md.
+if [ -n "${PERKOS_HIBERNATION_S3_URI:-}" ] && [ -n "${PERKOS_HIBERNATION_KMS_KEY:-}" ]; then
+  (
+    while sleep "${PERKOS_SNAPSHOT_INTERVAL_SEC:-300}"; do
+      /usr/local/bin/perkos-snapshot.sh >/dev/null 2>&1 || true
+    done
+  ) &
+  echo "perkos-entrypoint: periodic state snapshot enabled (every ${PERKOS_SNAPSHOT_INTERVAL_SEC:-300}s)"
+fi
+
 echo "perkos-entrypoint: delegating to upstream entrypoint..."
 
 # Upstream Hermes oscillates between two ENTRYPOINT shapes across
