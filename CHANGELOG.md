@@ -7,6 +7,40 @@ captures *what shipped* and the *why* — the equivalent of a good commit body,
 collected here so operators don't have to spelunk `git log`. Tag-style
 versions are optional; date-stamped sections are fine for in-flight work.
 
+## 2026-06-04
+
+### Hibernation state snapshot/restore — Hermes VALIDATED e2e, OpenClaw generalized
+
+The "clone the agent's filesystem on hibernate, restore it on wake" mechanism
+now works. Client-side **envelope encryption**: a KMS data key (encryption
+context `agent=<id>`) encrypts a gzip tar of the state dir with openssl
+**AES-256-CBC + PBKDF2**; S3 only ever stores ciphertext + the wrapped key +
+a plaintext manifest. **Trigger = periodic loop** (`PERKOS_SNAPSHOT_INTERVAL_SEC`,
+default 300s) backgrounded by the entrypoint before it hands off to the runtime
+(the s6/tini shutdown hooks were unreliable); **restore.sh runs on every boot**
+(no-op on first launch). Generic `snapshot.sh`/`restore.sh` shared verbatim by
+both images (`SRC`/`DEST` default to `HERMES_HOME`/`OPENCLAW_HOME`; `PERKOS_RUNTIME`
+tunes excludes + manifest). Keep-last-N prune (`PERKOS_BACKUP_RETENTION`, default 5).
+
+- **Hermes — VALIDATED end-to-end on live ECS.** Image `latest-perkos.2026.06.04.947ce24`:
+  full launch → encrypted snapshot → S3 (3 objects, 7 MB manifest
+  `alg:"AES-256-CBC+PBKDF2"`) → hibernate (`0/0`) → wake → `[restore] restore
+  complete` (7,124,619 B back into `/opt/data`). Proves KMS `GenerateDataKey`,
+  client-encrypt + S3 `PutObject` under the task role, and the wake restore path.
+- **CI green (3 smoke fixes that were masking each other behind `fail()`'s
+  `exit 1`):** `API_SERVER_KEY=dummy` in the smoke env (the api_server refuses
+  to boot without it); the snapshot no-op grep tolerates compact JSON
+  (`"skipped":true`); and the config check asserts the **inline `api_key:`**
+  (the BYOK-401 fix) instead of the stale `api_key_env` binding.
+- **OpenClaw — generalized (code; pending build + e2e).** `images/openclaw/`
+  now bakes `snapshot.sh`/`restore.sh` (identical to Hermes) + installs
+  `bash`/`openssl`/`ca-certificates`/`awscli`; the tini entrypoint exports
+  `PERKOS_STATE_DIR=$OPENCLAW_HOME`, runs restore-on-boot (after the persona/
+  bundled-skill writes, before the open-source skill fetch so fresh skills win),
+  and backgrounds the periodic snapshot loop before `exec "$@"`. New smoke checks
+  assert the scripts are baked + executable, the AWS CLI is present, and the
+  snapshot no-op contract holds.
+
 ## 2026-06-02
 
 ### OpenClaw — unblock BYOK tool execution (thinkingDefault off + memorySearch off)

@@ -30,10 +30,12 @@ ARG OPENCLAW_VERSION=
 
 USER root
 
-# tini is already in the upstream image. We only need jq for the
-# entrypoint template substitution.
+# tini is already in the upstream image. jq powers the entrypoint template
+# substitution; the AWS CLI + openssl + bash drive the hibernation
+# snapshot/restore scripts (client-side encrypted state backup to S3).
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends jq && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      jq bash ca-certificates openssl awscli && \
     rm -rf /var/lib/apt/lists/*
 
 # Baseline config — templated by docker-entrypoint.sh at boot. Values
@@ -44,7 +46,12 @@ COPY --chown=node:node config/openclaw.template.json /opt/perkos/openclaw.templa
 # boot by the entrypoint, where OpenClaw auto-discovers them.
 COPY --chown=node:node skills /opt/perkos-skills
 COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
-RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh
+# Hibernation snapshot/restore (generic, shared verbatim with the Hermes image).
+COPY snapshot.sh /usr/local/bin/perkos-snapshot.sh
+COPY restore.sh /usr/local/bin/perkos-restore.sh
+RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh \
+              /usr/local/bin/perkos-snapshot.sh \
+              /usr/local/bin/perkos-restore.sh
 
 # PerkOS metadata
 LABEL org.opencontainers.image.title="PerkOS-OpenClaw" \

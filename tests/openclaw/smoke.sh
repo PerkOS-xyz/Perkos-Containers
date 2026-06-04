@@ -106,6 +106,27 @@ if run_container perkos-openclaw-smoke-baseline-$$; then
   else
     pass "baseline: no AGENTS.md without persona env (correct)"
   fi
+
+  # Hibernation snapshot/restore: scripts baked + executable, AWS CLI present,
+  # and the snapshot no-op contract (skips cleanly when no S3 URI is set).
+  if docker exec "$CONTAINER" test -x /usr/local/bin/perkos-snapshot.sh \
+     && docker exec "$CONTAINER" test -x /usr/local/bin/perkos-restore.sh; then
+    pass "hibernation: snapshot.sh + restore.sh installed + executable"
+  else
+    fail "hibernation: snapshot.sh/restore.sh missing or not executable"
+  fi
+  if docker exec "$CONTAINER" aws --version >/dev/null 2>&1; then
+    pass "hibernation: aws CLI present (can call S3 + KMS)"
+  else
+    fail "hibernation: aws CLI missing — snapshot/restore will fail at runtime"
+  fi
+  if docker exec "$CONTAINER" sh -c \
+      "env -u PERKOS_HIBERNATION_S3_URI /usr/local/bin/perkos-snapshot.sh 2>/dev/null" \
+      | grep -qE '"skipped":\s*true'; then
+    pass "hibernation: snapshot.sh no-op when PERKOS_HIBERNATION_S3_URI unset"
+  else
+    fail "hibernation: snapshot.sh should skip with JSON status when S3 URI unset"
+  fi
 fi
 
 # ---------------------------------------------------------------

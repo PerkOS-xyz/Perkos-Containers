@@ -15,6 +15,12 @@ set -eu
 CONFIG_DIR="$(dirname "$OPENCLAW_CONFIG_PATH")"
 mkdir -p "$CONFIG_DIR"
 
+# Hibernation snapshot/restore operate on the whole OpenClaw home — config +
+# workspace (AGENTS.md, skills, memory). snapshot.sh/restore.sh default their
+# source/target to OPENCLAW_HOME; pin it to the resolved config dir so they
+# back up exactly what survives a hibernate→wake clone.
+export PERKOS_STATE_DIR="$CONFIG_DIR"
+
 # Generate a gateway API key on first boot if not provided. Persisted in
 # the config dir so container restarts reuse the same key (otherwise any
 # other process talking to this gateway would lose connection).
@@ -145,6 +151,15 @@ if [ -n "${PERKOS_AGENT_SOUL_B64:-}" ]; then
   fi
 fi
 
+# ── Restore a hibernation snapshot if one exists (no-op on first ever launch
+# or when PERKOS_HIBERNATION_S3_URI is unset). Runs AFTER the config render +
+# persona/bundled-skill writes (the snapshot's deterministic copies just win,
+# identical to a fresh render) but BEFORE the open-source skill fetch below, so
+# freshly-fetched skill content wins over any stale snapshot copy. ─────────────
+echo "perkos-entrypoint: checking for hibernation snapshot..."
+/usr/local/bin/perkos-restore.sh || \
+  echo "perkos-entrypoint: restore failed (continuing with fresh state)"
+
 # Open-source skills (PerkOS skill packs the wallet selected in the wizard).
 #
 # The provisioner base64's a JSON list of { name, url } into
@@ -210,6 +225,22 @@ if [ -n "${PERKOS_AGENT_SKILLS_B64:-}" ]; then
       console.log("perkos-entrypoint: installed "+n+" skill pack file(s)");
     })();
   ' || echo "perkos-entrypoint: skill install step failed (continuing)"
+fi
+
+# ── Periodic state snapshot (hibernation backup) ──────────────────────────────
+# Snapshot the OpenClaw home → S3 (client-side encrypted) every
+# PERKOS_SNAPSHOT_INTERVAL_SEC (default 300s) so a hibernated agent can be
+# cloned/restored on wake. Backgrounded before we hand off to the gateway; it
+# re-parents to PID 1 (tini) and keeps running. No-op unless both
+# PERKOS_HIBERNATION_S3_URI + _KMS_KEY are set. restore.sh already ran above, so
+# the first snapshot reflects the restored state. See HIBERNATION-SNAPSHOT-DESIGN.md.
+if [ -n "${PERKOS_HIBERNATION_S3_URI:-}" ] && [ -n "${PERKOS_HIBERNATION_KMS_KEY:-}" ]; then
+  (
+    while sleep "${PERKOS_SNAPSHOT_INTERVAL_SEC:-300}"; do
+      /usr/local/bin/perkos-snapshot.sh >/dev/null 2>&1 || true
+    done
+  ) &
+  echo "perkos-entrypoint: periodic state snapshot enabled (every ${PERKOS_SNAPSHOT_INTERVAL_SEC:-300}s)"
 fi
 
 exec "$@"
