@@ -25,7 +25,7 @@ test_snapshot_noop_when_uri_unset() {
   echo "snapshot.sh no-op when PERKOS_HIBERNATION_S3_URI is unset"
   local out
   out="$(env -u PERKOS_HIBERNATION_S3_URI HERMES_HOME=/tmp/does-not-exist bash "$SNAPSHOT" 2>/dev/null)"
-  if echo "$out" | grep -q '"skipped": true'; then
+  if echo "$out" | grep -qE '"skipped":\s*true'; then
     pass "exit code 0 + skipped JSON"
   else
     fail "expected '\"skipped\": true' in output, got: $out"
@@ -36,7 +36,7 @@ test_restore_noop_when_uri_unset() {
   echo "restore.sh no-op when PERKOS_HIBERNATION_S3_URI is unset"
   local out
   out="$(env -u PERKOS_HIBERNATION_S3_URI HERMES_HOME=/tmp/x bash "$RESTORE" 2>/dev/null)"
-  if echo "$out" | grep -q '"skipped": true'; then
+  if echo "$out" | grep -qE '"skipped":\s*true'; then
     pass "exit code 0 + skipped JSON"
   else
     fail "expected '\"skipped\": true' in output, got: $out"
@@ -49,11 +49,24 @@ test_snapshot_skips_when_source_missing() {
   tmp="$(mktemp -d)"
   rmdir "$tmp"  # delete so it's a missing dir
   local out
-  out="$(PERKOS_HIBERNATION_S3_URI=s3://x/y/ HERMES_HOME="$tmp" bash "$SNAPSHOT" 2>/dev/null || true)"
-  if echo "$out" | grep -q '"reason": "source missing"'; then
+  # A KMS key is required before the source check (we never snapshot
+  # unencrypted), so set a dummy one to reach the source-missing path.
+  out="$(PERKOS_HIBERNATION_S3_URI=s3://x/y/ PERKOS_HIBERNATION_KMS_KEY=alias/test HERMES_HOME="$tmp" bash "$SNAPSHOT" 2>/dev/null || true)"
+  if echo "$out" | grep -qE '"reason":\s*"source missing"'; then
     pass "no source dir → graceful skip"
   else
     fail "expected source-missing skip, got: $out"
+  fi
+}
+
+test_snapshot_skips_when_no_kms() {
+  echo "snapshot.sh refuses (skips) when no KMS key — never uploads plaintext"
+  local out
+  out="$(PERKOS_HIBERNATION_S3_URI=s3://x/y/ env -u PERKOS_HIBERNATION_KMS_KEY HERMES_HOME=/tmp bash "$SNAPSHOT" 2>/dev/null || true)"
+  if echo "$out" | grep -qE '"reason":\s*"no KMS key"'; then
+    pass "no KMS key → graceful skip (no plaintext upload)"
+  else
+    fail "expected no-KMS skip, got: $out"
   fi
 }
 
@@ -76,6 +89,7 @@ test_help_runs
 test_snapshot_noop_when_uri_unset
 test_restore_noop_when_uri_unset
 test_snapshot_skips_when_source_missing
+test_snapshot_skips_when_no_kms
 test_snapshot_exit_codes
 
 echo

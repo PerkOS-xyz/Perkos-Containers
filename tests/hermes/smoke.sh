@@ -30,6 +30,10 @@ ENV_ARGS=(
   -e PERKOS_LLM_API_KEY=dummy
   -e PERKOS_LLM_BASE_URL=https://api.llm.perkos.xyz/v1
   -e PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud
+  # Upstream Hermes now refuses to start the api_server without a key, even on
+  # a loopback bind — the provisioner always sets this in prod, so the smoke
+  # must too or the container exits 1 (this was failing the build).
+  -e API_SERVER_KEY=dummy-smoke-key
 )
 
 cleanup() {
