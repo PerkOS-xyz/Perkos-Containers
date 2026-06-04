@@ -224,10 +224,15 @@ if echo "$config" | grep -q "provider: custom"; then
 else
   fail "config.yaml missing 'provider: custom' (was env substitution applied?)"
 fi
-if echo "$config" | grep -q "api_key_env: PERKOS_LLM_API_KEY"; then
-  pass "config.yaml has api_key_env: PERKOS_LLM_API_KEY"
+# BYOK 401 fix: the LLM key is wired INLINE as `api_key:` (NOT api_key_env —
+# Hermes ignores api_key_env in the model: block → "no-key" sentinel → the
+# gateway's nginx auth_request returns 401). Verify envsubst expanded the
+# inline key (PERKOS_LLM_API_KEY=dummy in this smoke env). See
+# images/hermes/config/hermes.template.yaml model.api_key for the rationale.
+if echo "$config" | grep -q "api_key: dummy"; then
+  pass "config.yaml has inline api_key (gateway key expanded — guards 401 regression)"
 else
-  fail "config.yaml missing api_key_env binding"
+  fail "config.yaml missing inline 'api_key:' binding (BYOK 401 regression — see hermes.template.yaml model.api_key)"
 fi
 
 # --- Open-source skills install (PERKOS_AGENT_SKILLS_B64) ---
