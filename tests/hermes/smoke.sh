@@ -191,7 +191,7 @@ fi
 # No-op contract: with no S3 URI env, snapshot must skip cleanly.
 if docker exec "$CONTAINER" sh -c \
     "env -u PERKOS_HIBERNATION_S3_URI HERMES_HOME=/opt/data /usr/local/bin/perkos-snapshot.sh 2>/dev/null" \
-    | grep -q '"skipped": true'; then
+    | grep -qE '"skipped":\s*true'; then
   pass "snapshot.sh no-op when PERKOS_HIBERNATION_S3_URI unset"
 else
   fail "snapshot.sh should skip with JSON status when S3 URI is unset"
