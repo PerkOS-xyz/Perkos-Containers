@@ -34,6 +34,23 @@ WANT_TS="${PERKOS_RESTORE_TS:-}"
 [[ -n "$S3_URI" ]] || skip "PERKOS_HIBERNATION_S3_URI unset" "no S3 URI"
 case "$S3_URI" in */) ;; *) S3_URI="${S3_URI}/" ;; esac
 
+# One-shot point-in-time directive. The API's restore endpoint writes the chosen
+# snapshot timestamp to <prefix>restore-directive. We consume it (read here,
+# delete after a successful restore) so the point-in-time restore happens
+# EXACTLY once — baking the ts into the task-def env instead would re-restore
+# the same snapshot on every container restart, silently reverting newer work.
+# (PERKOS_RESTORE_TS still works for ad-hoc/manual use and takes precedence.)
+DIRECTIVE_URI="${S3_URI}restore-directive"
+CONSUME_DIRECTIVE=""
+if [[ -z "$WANT_TS" ]]; then
+  D="$(aws s3 cp "$DIRECTIVE_URI" - 2>/dev/null | tr -dc 'A-Za-z0-9' || true)"
+  if [[ -n "$D" ]]; then
+    WANT_TS="$D"
+    CONSUME_DIRECTIVE=1
+    log "restore directive found → point-in-time restore ts=$WANT_TS"
+  fi
+fi
+
 # Resolve which snapshot to restore.
 if [[ -n "$WANT_TS" ]]; then
   TS="$WANT_TS"
@@ -79,4 +96,10 @@ log "extracting ${SIZE} bytes into $DEST"
 tar -xzpf "$TMP_TAR" -C "$DEST" 2>&1 >&2 || fail "untar failed"
 
 log "restore complete (ts=$TS, ${SIZE} bytes)"
+# Consume the one-shot directive so the NEXT boot restores latest, not this ts.
+if [[ -n "$CONSUME_DIRECTIVE" ]]; then
+  aws s3 rm "$DIRECTIVE_URI" >/dev/null 2>&1 \
+    && log "consumed restore directive" \
+    || log "WARN: could not delete restore directive (may re-restore on next boot)"
+fi
 printf '{"ok":true,"ts":"%s","key":"state-%s.tar.enc","bytes":%s}\n' "$TS" "$TS" "$SIZE"
