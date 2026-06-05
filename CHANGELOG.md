@@ -40,6 +40,25 @@ tunes excludes + manifest). Keep-last-N prune (`PERKOS_BACKUP_RETENTION`, defaul
   and backgrounds the periodic snapshot loop before `exec "$@"`. New smoke checks
   assert the scripts are baked + executable, the AWS CLI is present, and the
   snapshot no-op contract holds.
+- **Restore-from-specific — one-shot S3 directive** (`f0ae6f4`, both runtimes).
+  For point-in-time restore from the Settings → Backups UI: the API writes the
+  chosen timestamp to `<prefix>restore-directive`; on the next boot `restore.sh`
+  reads it (precedence over latest), restores that snapshot, then **deletes the
+  directive** so it applies exactly once. Baking `PERKOS_RESTORE_TS` into the
+  persistent task-def env instead would re-restore the same ts on every restart,
+  silently reverting newer work. `PERKOS_RESTORE_TS` still works for ad-hoc use;
+  the ts is sanitized (`tr -dc A-Za-z0-9`) before use.
+- **Hardened by a pre-deploy adversarial review** (`61a0680`). Two HIGH + one
+  MEDIUM defect fixed before this ever reached ECR: (1) `snapshot.sh` now
+  EXCLUDES the entrypoint-rendered config (hermes `./config.yaml`; openclaw
+  `./openclaw.json` + `./.gateway-api-key`) — restore was clobbering the fresh,
+  env-derived config (inline LLM key; OpenClaw gateway token) with the snapshot's
+  STALE copy, an unconditional 401 after a re-provision/resilient wake that minted
+  new keys; (2) a directive pointing at a since-pruned ts (TOCTOU during the
+  deploy window) used to skip without deleting the directive or falling back →
+  agent ran blank forever; now it drops the dead directive and restores latest;
+  (3) the directive delete is retried (transient S3 error would otherwise
+  re-restore the same ts next boot).
 
 ## 2026-06-02
 
