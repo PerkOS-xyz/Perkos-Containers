@@ -68,8 +68,28 @@ TMP_TAR="/tmp/perkos-restore-$$.tar.gz"
 TMP_DK="/tmp/perkos-restore-$$.key.bin"
 trap 'rm -f "$TMP_ENC" "$TMP_TAR" "$TMP_DK" 2>/dev/null || true' EXIT
 
-# Confirm both objects exist (ciphertext + wrapped key).
-aws s3 ls "$ENC_KEY"  >/dev/null 2>&1 || skip "ciphertext $ENC_KEY missing" "no snapshot"
+# Confirm both objects exist (ciphertext + wrapped key). If a one-shot directive
+# points at a since-pruned ts (TOCTOU: the old container's retention prune can
+# delete it during the deploy window — the directive object is NOT pruned), do
+# NOT wedge: drop the dead directive and fall back to the latest snapshot. Else
+# the directive re-fires every boot (PERKOS_RESTORE_TS stays unset) and the agent
+# silently runs from blank state forever.
+if ! aws s3 ls "$ENC_KEY" >/dev/null 2>&1; then
+  if [[ -n "$CONSUME_DIRECTIVE" ]]; then
+    log "WARN: directive ts=$TS ciphertext missing — discarding directive, falling back to latest"
+    aws s3 rm "$DIRECTIVE_URI" >/dev/null 2>&1 || log "WARN: could not delete dead restore directive"
+    CONSUME_DIRECTIVE=""
+    TS="$(aws s3 ls "$S3_URI" 2>/dev/null \
+          | grep -oE 'state-[0-9A-Z]+\.tar\.enc' \
+          | sed -E 's/^state-(.*)\.tar\.enc$/\1/' | sort -r | head -1 || true)"
+    [[ -n "$TS" ]] || skip "no snapshot found under $S3_URI" "no snapshot"
+    ENC_KEY="${S3_URI}state-${TS}.tar.enc"
+    WRAP_KEY="${S3_URI}state-${TS}.key"
+    aws s3 ls "$ENC_KEY" >/dev/null 2>&1 || skip "ciphertext $ENC_KEY missing" "no snapshot"
+  else
+    skip "ciphertext $ENC_KEY missing" "no snapshot"
+  fi
+fi
 aws s3 ls "$WRAP_KEY" >/dev/null 2>&1 || fail "wrapped key $WRAP_KEY missing (snapshot incomplete)"
 
 log "restoring snapshot ts=$TS"
@@ -97,9 +117,16 @@ tar -xzpf "$TMP_TAR" -C "$DEST" 2>&1 >&2 || fail "untar failed"
 
 log "restore complete (ts=$TS, ${SIZE} bytes)"
 # Consume the one-shot directive so the NEXT boot restores latest, not this ts.
+# Retry to ride out a transient S3 error/throttle — a surviving directive would
+# re-restore this ts on the next boot and silently revert newer work.
 if [[ -n "$CONSUME_DIRECTIVE" ]]; then
-  aws s3 rm "$DIRECTIVE_URI" >/dev/null 2>&1 \
+  rm_ok=""
+  for _ in 1 2 3; do
+    if aws s3 rm "$DIRECTIVE_URI" >/dev/null 2>&1; then rm_ok=1; break; fi
+    sleep 2
+  done
+  [[ -n "$rm_ok" ]] \
     && log "consumed restore directive" \
-    || log "WARN: could not delete restore directive (may re-restore on next boot)"
+    || log "WARN: could not delete restore directive after retries (may re-restore on next boot)"
 fi
 printf '{"ok":true,"ts":"%s","key":"state-%s.tar.enc","bytes":%s}\n' "$TS" "$TS" "$SIZE"

@@ -59,9 +59,20 @@ TAR="/tmp/perkos-snap-${TS}.tar.gz"
 ENC="/tmp/perkos-snap-${TS}.tar.enc"
 trap 'rm -f "$TAR" "$ENC" 2>/dev/null || true' EXIT
 
-# Ephemeral + re-injectable-secret excludes (the provisioner re-supplies these).
+# Ephemeral + re-injectable excludes. The entrypoint re-renders the runtime
+# config from env on EVERY boot (Hermes config.yaml, OpenClaw openclaw.json),
+# both carrying secrets inline (LLM api_key; OpenClaw gateway.auth.token). If we
+# snapshotted them, restore would clobber the fresh render with a STALE copy —
+# and a re-provision/resilient wake mints NEW keys, so the restored old key 401s
+# (OpenClaw's bridge↔gateway token mismatch is an unconditional 401). Excluding
+# them keeps the env-driven render authoritative; true state (workspace, memory,
+# sessions) is still captured.
 EXCLUDES=( --exclude='*.sock' --exclude='*.pid' --exclude='./tmp' --exclude='./logs' )
-[[ "$RUNTIME" == "hermes" ]] && EXCLUDES+=( --exclude='./.anthropic_oauth.json' )
+if [[ "$RUNTIME" == "hermes" ]]; then
+  EXCLUDES+=( --exclude='./.anthropic_oauth.json' --exclude='./config.yaml' )
+else
+  EXCLUDES+=( --exclude='./openclaw.json' --exclude='./.gateway-api-key' )
+fi
 
 log "tarring $SRC (runtime=$RUNTIME) → $TAR"
 tar -czf "$TAR" "${EXCLUDES[@]}" -C "$SRC" . 2>&1 >&2 || fail "tar failed" 2
