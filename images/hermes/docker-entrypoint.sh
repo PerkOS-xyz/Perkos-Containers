@@ -289,6 +289,35 @@ if [ -n "${PERKOS_HIBERNATION_S3_URI:-}" ] && [ -n "${PERKOS_HIBERNATION_KMS_KEY
   echo "perkos-entrypoint: periodic state snapshot enabled (every ${PERKOS_SNAPSHOT_INTERVAL_SEC:-300}s)"
 fi
 
+# ── Single-gateway boot (fixes the gateway double-start / lock-flap) ─────────
+# Hermes 0.16 runs `gateway run` under a DYNAMIC s6 service (`gateway-default`,
+# auto-restart on crash) by default. On a crash the supervisor respawns the
+# gateway while the prior instance's runtime lock ($HERMES_HOME/gateway.{pid,lock})
+# may not be released yet → the respawn hits "Gateway runtime lock is already
+# held by another instance. Exiting" and s6 flaps it; sometimes our s6 main
+# program exits and the ECS task dies. The board never gets worked.
+#
+# Opt out of the in-container supervisor (upstream-supported knob) so the
+# gateway runs as our FOREGROUND main program: one instance, one lock holder,
+# no respawn race. If it ever crashes, the container exits and ECS restarts the
+# task cleanly — the orchestration layer we actually want, instead of an
+# in-container restart loop fighting a stale lock.
+export HERMES_GATEWAY_NO_SUPERVISE=1
+
+# Defensive: drop stale runtime state left by a snapshot restore or an unclean
+# prior shutdown so the boot can't double-start the gateway. The decisive one is
+# gateway_state.json: Hermes 0.16's cont-init reconciler (hermes_cli.container_boot)
+# auto-starts a SUPERVISED gateway for any profile whose recorded state is
+# "running" — and our foreground `gateway run` already IS the gateway. A restored
+# "running" state therefore launches a SECOND gateway → PID-file race + "Port
+# already in use" → flap, and the board never gets worked. Removing it (we run
+# foreground via HERMES_GATEWAY_NO_SUPERVISE above) keeps exactly one gateway.
+# gateway.pid/gateway.lock/processes.json are container-namespaced runtime files
+# that are meaningless after a restore.
+for _f in gateway_state.json processes.json gateway.pid gateway.lock; do
+  rm -f "${HERMES_HOME:-/opt/data}/$_f" 2>/dev/null || true
+done
+
 echo "perkos-entrypoint: delegating to upstream entrypoint..."
 
 # Upstream Hermes oscillates between two ENTRYPOINT shapes across

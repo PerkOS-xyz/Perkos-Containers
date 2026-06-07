@@ -67,9 +67,18 @@ trap 'rm -f "$TAR" "$ENC" 2>/dev/null || true' EXIT
 # (OpenClaw's bridge↔gateway token mismatch is an unconditional 401). Excluding
 # them keeps the env-driven render authoritative; true state (workspace, memory,
 # sessions) is still captured.
-EXCLUDES=( --exclude='*.sock' --exclude='*.pid' --exclude='./tmp' --exclude='./logs' )
+EXCLUDES=( --exclude='*.sock' --exclude='*.pid' --exclude='*.lock' --exclude='./tmp' --exclude='./logs' )
 if [[ "$RUNTIME" == "hermes" ]]; then
-  EXCLUDES+=( --exclude='./.anthropic_oauth.json' --exclude='./config.yaml' )
+  # Runtime/namespaced gateway state — never snapshot it. gateway_state.json is
+  # the decisive one: a restored "running" state makes the boot reconciler
+  # (hermes_cli.container_boot) auto-start a SECOND, supervised gateway on top of
+  # our foreground one → PID/port race → flap (the board never gets worked).
+  # gateway.lock is the runtime lock; processes.json is the container process
+  # table. The entrypoint also removes all of these defensively on boot.
+  # config.yaml is re-rendered from env each boot.
+  EXCLUDES+=( --exclude='./.anthropic_oauth.json' --exclude='./config.yaml' \
+              --exclude='./gateway.lock' --exclude='./gateway_state.json' \
+              --exclude='./processes.json' )
 else
   EXCLUDES+=( --exclude='./openclaw.json' --exclude='./.gateway-api-key' )
 fi
