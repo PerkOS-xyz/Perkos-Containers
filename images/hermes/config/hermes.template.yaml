@@ -56,6 +56,15 @@ model:
 mcp_servers:
   perkos-board:
     url: http://127.0.0.1:5071
+    # Bound connect so the board MCP can NEVER hang/delay the gateway boot.
+    # The gateway connects here during startup (discover_mcp_tools); if the
+    # streamable-http handshake stalls or the bridge sidecar isn't up yet, an
+    # unbounded connect blocks the whole boot → api_server never binds → the
+    # agent is unreachable for chat AND board work. With a short connect_timeout
+    # it fails fast instead: chat stays available; board tools are present
+    # whenever the bridge answers in time.
+    connect_timeout: 10
+    timeout: 120
 
 agent:
   id: ${PERKOS_AGENT_ID}
