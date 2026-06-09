@@ -22,7 +22,7 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
-ARG PERKOS_A2A_VERSION=0.12.10
+ARG PERKOS_A2A_VERSION=0.12.11
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
