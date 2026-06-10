@@ -62,6 +62,12 @@ truthy() {
 TELEGRAM_PLUGIN_ENABLED=$(truthy "${TELEGRAM_ENABLED:-}")
 SLACK_PLUGIN_ENABLED=$(truthy "${SLACK_ENABLED:-}")
 DISCORD_PLUGIN_ENABLED=$(truthy "${DISCORD_ENABLED:-}")
+# OpenClaw's bundled workboard (local kanban + agent tools): the agent's
+# LOCAL sub-task ledger for decomposing its own work — the PerkOS board stays
+# the cross-agent source of truth. Opt-in per agent via the provisioner
+# (PERKOS_WORKBOARD_ENABLED=true) because the extra tool schemas cost prompt
+# tokens on every turn.
+WORKBOARD_PLUGIN_ENABLED=$(truthy "${PERKOS_WORKBOARD_ENABLED:-}")
 
 # Substitute __FOO__ placeholders. jq is in the image already.
 #
@@ -91,6 +97,7 @@ jq \
   --arg telegram_plugin_enabled "$TELEGRAM_PLUGIN_ENABLED" \
   --arg slack_plugin_enabled    "$SLACK_PLUGIN_ENABLED" \
   --arg discord_plugin_enabled  "$DISCORD_PLUGIN_ENABLED" \
+  --arg workboard_enabled       "$WORKBOARD_PLUGIN_ENABLED" \
   '
   (..|strings) |= (
     gsub("__PERKOS_AGENT_ID__";       $agent_id)
@@ -108,6 +115,11 @@ jq \
   # "<provider>/<model>" primary above.
   | if $llm_provider != "ollama"
     then .models.providers |= (with_entries(.key = $llm_provider))
+    else . end
+  # Workboard plugin (opt-in): the standard plugin entry shape — see
+  # openclaw docs/plugins/workboard.md.
+  | if $workboard_enabled == "true"
+    then .plugins.entries.workboard = { enabled: true, config: {} }
     else . end
   ' /opt/perkos/openclaw.template.json > "$OPENCLAW_CONFIG_PATH"
 

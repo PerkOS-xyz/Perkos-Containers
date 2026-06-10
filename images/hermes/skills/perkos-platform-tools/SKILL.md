@@ -34,8 +34,8 @@ Available tools (response shape: `{ ok, data?, errorClass?, message? }`):
 | `getMyAgent` | `{"name":"MyBuilder"}` | `{ agent: { ... } }` — only if owned by the caller |
 | `explainPlugin` | `{"pluginId":"github"}` | `{ id, label, description, requires, examples }` |
 | `listProjectTasks` | `{"projectId":"<id>"}` | `{ tasks: [{ id, name, status, agent, prompt, result }] }` — the project's job board |
-| `createTask` | `{"projectId":"<id>","name":"...","prompt":"...","agent":"<worker>","priority":"High"}` | `{ taskId }` — seed/assign a task (PM use) |
-| `updateTaskStatus` | `{"projectId":"<id>","taskId":"<id>","status":"In progress\|Done","result":"..."}` | `{ taskId, status }` — move a task + record result (worker use) |
+| `createTask` | `{"projectId":"<id>","name":"...","prompt":"...","agent":"<worker>","priority":"High","parents":["<taskId>"],"skills":["..."],"goalMode":true,"acceptanceCriteria":"..."}` | `{ taskId }` — seed/assign a task (PM use). `parents` = task ids that must be Done first (dependency graph). `goalMode`+`acceptanceCriteria` = result is auto-judged; failures return to the worker with feedback |
+| `updateTaskStatus` | `{"projectId":"<id>","taskId":"<id>","status":"In progress\|Done","result":"...","claimToken":"<from your assignment>","proof":[{"status":"passed","label":"...","url":"..."}]}` | `{ taskId, status }` — move a task + record result (worker use). Always pass the `claimToken` from your assignment prompt; attach `proof` evidence when finishing |
 | `postProjectMessage` | `{"projectId":"<id>","text":"..."}` | `{ messageId }` — notify the PM / team in project chat |
 
 ### Calling pattern
@@ -97,21 +97,35 @@ This means: **the LLM cannot list another wallet's agents even if it tries to**.
 When you are part of a project (the user or another agent gives you a
 `projectId`), you can drive its job board with the tools above:
 
-**If you are the PM / orchestrator:**
-1. Break the goal into tasks. For each, `createTask` with a clear `name`
-   + `prompt`, and set `agent` to the worker who should do it.
-2. Tell each worker (via A2A message or project chat) which task is
-   theirs and the `taskId`.
-3. Watch progress with `listProjectTasks`; when all are `Done`, summarize.
+**If you are the PM / orchestrator (playbook):**
+1. Break the goal into the SMALLEST useful tasks. For each, `createTask`
+   with a clear `name` + `prompt` (state the deliverable and what "done"
+   looks like), and set `agent` to the worker who should do it — only use
+   worker names that actually exist on the project roster.
+2. Sequence multi-step work with `parents`: a synthesis/review task lists
+   the ids of the research tasks it depends on. The dispatcher holds it
+   until every parent is Done, then wakes the worker automatically.
+3. For quality-critical tasks set `goalMode: true` + `acceptanceCriteria`
+   ("an acceptable result contains …"). The platform auto-judges the
+   worker's submission and bounces it back with feedback if it falls short.
+4. Watch progress with `listProjectTasks`; when all are `Done`, post a
+   summary + recommendation with `postProjectMessage`.
 
-**If you are a worker and you were assigned a task:**
-1. `updateTaskStatus` → `"In progress"` when you start.
-2. Do the actual work.
-3. `updateTaskStatus` → `"Done"` with a `result` summarizing what you did.
-4. `postProjectMessage` to notify the PM the task is complete.
+**If you are a worker and you were assigned a task (playbook):**
+1. Your assignment prompt contains `taskId` and a `claimToken` — that token
+   proves the task is yours. Include it in EVERY `updateTaskStatus` call
+   (it also acts as your heartbeat on long tasks).
+2. `updateTaskStatus` → `"In progress"` when you start.
+3. Do the actual work. Produce a concrete deliverable, not a promise.
+4. `updateTaskStatus` → `"Done"` with `result` = the deliverable, plus
+   `proof` entries for anything verifiable (a command you ran, a link, a
+   check that passed).
+5. `postProjectMessage` to notify the PM the task is complete.
+6. If your submission is rejected by the acceptance check, you'll be
+   re-woken with the judge's feedback — address it specifically, resubmit.
 
-Always pass the real `taskId` / `projectId` you were given — never invent
-ids. Call the tools; do not just claim you did the work.
+Always pass the real `taskId` / `projectId` / `claimToken` you were given —
+never invent ids. Call the tools; do not just claim you did the work.
 
 ## Boundaries
 
