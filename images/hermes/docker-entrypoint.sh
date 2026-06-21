@@ -100,10 +100,10 @@ fi
 # Stage the native PerkOS Knowledge plugin into the user-plugins dir Hermes
 # scans ($HERMES_HOME/plugins/<name>/). Standalone tool plugin (stdlib-only);
 # enabled via config.yaml plugins.enabled (rendered above).
-if [ -d /opt/perkos-plugins/perkos-tech ]; then
-  rm -rf "$HERMES_HOME/plugins/perkos-tech"
-  cp -r /opt/perkos-plugins/perkos-tech "$HERMES_HOME/plugins/perkos-tech"
-  echo "perkos-entrypoint: staged perkos-tech knowledge plugin"
+if [ -d /opt/perkos-plugins/perkos-knowledge ]; then
+  rm -rf "$HERMES_HOME/plugins/perkos-knowledge"
+  cp -r /opt/perkos-plugins/perkos-knowledge "$HERMES_HOME/plugins/perkos-knowledge"
+  echo "perkos-entrypoint: staged perkos-knowledge knowledge plugin"
 fi
 
 # Stage messaging gateway platform adapters. We only stage a platform

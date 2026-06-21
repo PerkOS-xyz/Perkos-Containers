@@ -7,6 +7,33 @@ captures *what shipped* and the *why* — the equivalent of a good commit body,
 collected here so operators don't have to spelunk `git log`. Tag-style
 versions are optional; date-stamped sections are fine for in-flight work.
 
+## 2026-06-21
+
+### Skill id rename: `perkos-tech` → `perkos-knowledge` (both runtimes)
+
+Completes the PerkOS Knowledge plugin rebrand inside the images. The bundled
+plugin's internal id was the last `perkos-tech` holdover (the tool names were
+already `perkos_knowledge_*`). Renamed the vendored copies and every reference
+so a freshly built image loads the plugin under `perkos-knowledge`:
+
+- **Hermes** — `images/hermes/plugins/perkos-tech` → `plugins/perkos-knowledge`
+  (folder + `plugin.yaml` `name` + the nine `toolset=` ids in `__init__.py`); the
+  Dockerfile `COPY`, the entrypoint staging (`/opt/perkos-plugins/...` →
+  `$HERMES_HOME/plugins/...`), and the gateway allow-list
+  (`plugins.enabled: [perkos-knowledge]` in `hermes.template.yaml`) all moved in
+  lockstep — they must match or the standalone plugin won't load.
+- **OpenClaw** — `images/openclaw/skills/perkos-tech` → `skills/perkos-knowledge`
+  (folder + `SKILL.md` `name` + helper paths). The Dockerfile copies `skills/`
+  wholesale into `/opt/perkos-skills` and the entrypoint stages every folder
+  generically, so nothing else needed to change.
+
+Self-contained per image and **non-breaking**: nothing outside the image (no
+provisioning code, no agent soul) references the skill id, and already-running
+agents keep their existing image tag. Helper script filenames
+(`perkos_tech.mjs`/`.py`) are unchanged. Upstream source + npm:
+`@perkos/perkos-knowledge-plugin@0.3.0` (the old `@perkos/perkos-tech-plugin` is
+deprecated, pointing here).
+
 ## 2026-06-04
 
 ### Hibernation state snapshot/restore — Hermes VALIDATED e2e, OpenClaw generalized
