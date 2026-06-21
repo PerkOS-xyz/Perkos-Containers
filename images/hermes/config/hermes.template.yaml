@@ -70,6 +70,13 @@ agent:
   id: ${PERKOS_AGENT_ID}
   name: ${PERKOS_AGENT_NAME}
 
+# Standalone tool plugins staged into $HERMES_HOME/plugins/ by the entrypoint.
+# Hermes gates user/standalone plugins behind this allow-list (unset = none),
+# so perkos-tech (PerkOS Knowledge native tools) must be named here to load.
+plugins:
+  enabled:
+    - perkos-tech
+
 # Messaging gateway platforms. Each entry is read by Hermes only when
 # its plugin is present in $HERMES_HOME/plugins/platforms/. The
 # entrypoint stages a plugin's directory iff the agent's required env

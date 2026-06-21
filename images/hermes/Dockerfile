@@ -66,6 +66,12 @@ COPY skills/perkos-platform-tools /opt/perkos-skills/perkos-platform-tools
 # perkos-entrypoint.sh after upstream has set up HERMES_HOME with the
 # right ownership.
 
+# perkos-tech (PerkOS Knowledge) — NATIVE Hermes plugin (kind: standalone).
+# Exposes perkos_knowledge_* as first-class Hermes tools (query/manifest/x402
+# + the provider request loop). Staged into $HERMES_HOME/plugins/ at boot and
+# enabled via config.yaml `plugins.enabled`. Stdlib-only (no extra deps).
+COPY plugins/perkos-tech /opt/perkos-plugins/perkos-tech
+
 # Hermes PLATFORM plugins — gateway adapters that bring in inbound
 # messages from external services (Telegram, Slack, Farcaster...).
 # Different from skills: platforms live under plugins/platforms/,
