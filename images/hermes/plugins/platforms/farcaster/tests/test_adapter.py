@@ -75,6 +75,7 @@ def _config(**over: Any) -> FarcasterConfig:
         "webhook_secret": None,
         "reply_visibility": "mentions",
         "parent_channel": None,
+        "webhook_port": 0,  # disable the inbound server in unit tests
     }
     defaults.update(over)
     return FarcasterConfig(**defaults)
@@ -228,33 +229,45 @@ def test_handle_webhook_all_mode_with_channel_accepts():
 # ---------------------------------------------------------------------
 
 def test_signature_verification_rejects_when_secret_set_and_missing_sig():
-    cfg = _config(webhook_secret="topsecret")
-    adapter = FarcasterAdapter(cfg, FakeHttp([]), lambda c: _noop(c))
-    payload = _mention_payload(target_fid=12345)
-    accepted = asyncio.run(adapter.handle_webhook(payload, signature=None))
-    assert accepted is False
+    adapter = FarcasterAdapter(
+        _config(webhook_secret="topsecret"), FakeHttp([]), lambda c: _noop(c)
+    )
+    assert adapter._verify_signature(b'{"type":"cast.created"}', None) is False
 
 
-def test_signature_verification_accepts_correct_hmac():
+def test_signature_verification_accepts_correct_hmac_over_raw_body():
     import hashlib
     import hmac
 
-    payload = _mention_payload(target_fid=12345)
-    serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
-    sig = hmac.new(b"topsecret", serialized.encode(), hashlib.sha512).hexdigest()
-
-    captured: List[InboundCast] = []
-
-    async def handler(cast: InboundCast) -> None:
-        captured.append(cast)
-
+    # Neynar signs the EXACT raw bytes it POSTs.
+    raw = b'{"type":"cast.created","data":{"hash":"0xabc"}}'
+    sig = hmac.new(b"topsecret", raw, hashlib.sha512).hexdigest()
     adapter = FarcasterAdapter(
-        _config(webhook_secret="topsecret"), FakeHttp([]), handler
+        _config(webhook_secret="topsecret"), FakeHttp([]), lambda c: _noop(c)
     )
-    accepted = asyncio.run(adapter.handle_webhook(payload, signature=sig))
-    asyncio.run(asyncio.sleep(0))
-    assert accepted is True
-    assert len(captured) == 1
+    # Correct HMAC over the raw body → accepted.
+    assert adapter._verify_signature(raw, sig) is True
+    # The OLD bug: HMAC over a re-serialized (key-reordered) body → must NOT
+    # validate against the raw-body signature.
+    reserialized = b'{"data":{"hash":"0xabc"},"type":"cast.created"}'
+    bug_sig = hmac.new(b"topsecret", reserialized, hashlib.sha512).hexdigest()
+    assert adapter._verify_signature(raw, bug_sig) is False
+    # Wrong/garbage signature → rejected.
+    assert adapter._verify_signature(raw, "deadbeef") is False
+
+
+def test_signature_verification_requires_secret_fail_closed():
+    import hashlib
+    import hmac
+
+    # No webhook_secret configured → reject every inbound (fail-closed), even
+    # with an otherwise well-formed signature.
+    raw = b'{"type":"cast.created"}'
+    sig = hmac.new(b"anything", raw, hashlib.sha512).hexdigest()
+    adapter = FarcasterAdapter(
+        _config(webhook_secret=None), FakeHttp([]), lambda c: _noop(c)
+    )
+    assert adapter._verify_signature(raw, sig) is False
 
 
 def test_handle_webhook_drops_malformed_payload_without_crashing():

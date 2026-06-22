@@ -52,6 +52,14 @@ def _config_from_env() -> FarcasterConfig:
         )
         visibility = "mentions"
 
+    try:
+        webhook_port = int(os.environ.get("FARCASTER_WEBHOOK_PORT", "8645"))
+    except ValueError:
+        logger.warning(
+            "farcaster: invalid FARCASTER_WEBHOOK_PORT, falling back to 8645"
+        )
+        webhook_port = 8645
+
     return FarcasterConfig(
         neynar_api_key=api_key,
         signer_uuid=signer,
@@ -59,6 +67,7 @@ def _config_from_env() -> FarcasterConfig:
         webhook_secret=os.environ.get("FARCASTER_WEBHOOK_SECRET") or None,
         reply_visibility=visibility,
         parent_channel=os.environ.get("FARCASTER_PARENT_CHANNEL") or None,
+        webhook_port=webhook_port,
     )
 
 

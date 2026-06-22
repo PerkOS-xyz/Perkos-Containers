@@ -21,8 +21,11 @@ description: |
   each agent owns a single Farcaster identity (signer) per ECS task.
 
 # Python module loaded into the same process as the Hermes gateway
-# runner. We're not running our own server — Hermes already runs an
-# HTTP server for webhooks and a worker for outbound; we just attach.
+# runner. Hermes's PluginContext exposes no shared webhook-route hook, so
+# the adapter runs its OWN small aiohttp server (FARCASTER_WEBHOOK_PORT,
+# default 8645) for inbound — the same pattern the built-in SMS/LINE
+# platform adapters use. Neynar's webhook URL (registered out-of-band by
+# the provisioner) must route to that server's /webhooks/farcaster.
 entry_point: perkos_farcaster.plugin:register
 
 # Required env vars before the adapter will attempt to connect. The
@@ -34,6 +37,10 @@ required_env:
   - FARCASTER_FID                 # the agent's Farcaster ID
 
 # Optional env vars that customize behavior:
-#   FARCASTER_WEBHOOK_SECRET     HMAC secret for Neynar webhook verification
+#   FARCASTER_WEBHOOK_SECRET     HMAC secret for Neynar webhook verification.
+#                                REQUIRED for inbound — without it the adapter
+#                                fail-closes and rejects EVERY inbound cast.
+#   FARCASTER_WEBHOOK_PORT       Local port the inbound server binds (default
+#                                8645). 0 disables inbound.
 #   FARCASTER_REPLY_VISIBILITY   "all" (default) | "mentions" — what triggers a response
 #   FARCASTER_PARENT_CHANNEL     channel parent URL to scope inbound to a channel

@@ -29,6 +29,7 @@ Design notes:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Dict, Optional, Protocol
@@ -79,6 +80,10 @@ class FarcasterConfig:
     webhook_secret: Optional[str] = None
     reply_visibility: str = "mentions"  # "mentions" | "all"
     parent_channel: Optional[str] = None
+    # Local port the inbound webhook server binds. Neynar's webhook URL
+    # (registered out-of-band by the provisioner) must route here. 0 disables
+    # inbound (used by unit tests).
+    webhook_port: int = 8645
 
 
 @dataclass
@@ -142,6 +147,7 @@ class FarcasterAdapter:
         self._http = http
         self._inbound_handler = inbound_handler
         self._connected = False
+        self._runner: Any = None  # aiohttp AppRunner for the inbound server
 
     @property
     def connected(self) -> bool:
@@ -177,36 +183,105 @@ class FarcasterAdapter:
             )
             return False
 
+        await self._start_webhook_server()
+
         self._connected = True
         logger.info("farcaster: adapter ready (fid=%s)", self._config.fid)
         return True
 
     async def disconnect(self) -> None:
-        """No-op for now: webhook subscriptions outlive container restarts.
+        """Tear down the inbound webhook server.
 
-        Future: deregister the webhook on graceful shutdown so a torn-down
-        agent stops being notified. Not done at MVP because the webhook
-        registration is owned by the provisioner, not the runtime.
+        The Neynar webhook SUBSCRIPTION outlives container restarts (it's owned
+        by the provisioner), so we don't deregister it — we just stop our local
+        receiver.
         """
 
+        if self._runner is not None:
+            try:
+                await self._runner.cleanup()
+            except Exception:  # pragma: no cover - best effort
+                logger.warning("farcaster: webhook server cleanup failed", exc_info=True)
+            self._runner = None
         self._connected = False
 
-    async def handle_webhook(
-        self,
-        payload: Dict[str, Any],
-        signature: Optional[str] = None,
-    ) -> bool:
-        """Process one Neynar webhook delivery.
+    async def _start_webhook_server(self) -> None:
+        """Stand up the inbound webhook receiver.
 
-        Returns ``True`` if the inbound was accepted and dispatched,
-        ``False`` if it was rejected (bad signature, wrong event type,
-        not addressed to this agent). The HTTP layer can map False to
-        a 202 (accepted-but-ignored) so Neynar doesn't retry.
+        Neynar POSTs cast events to the agent's public webhook URL (registered
+        out-of-band by the provisioner); that URL must route to this server's
+        ``/webhooks/farcaster``. We run our own aiohttp server — the same
+        pattern the SMS / LINE platform adapters use — because Hermes's
+        PluginContext exposes no shared-route hook. ``webhook_port <= 0``
+        disables inbound (unit tests).
         """
 
-        if self._config.webhook_secret and not self._verify_signature(payload, signature):
-            logger.warning("farcaster: rejected webhook with bad signature")
-            return False
+        port = self._config.webhook_port
+        if port <= 0:
+            logger.info("farcaster: inbound disabled (webhook_port=%s)", port)
+            return
+        if not self._config.webhook_secret:
+            # Without the HMAC secret every delivery is rejected (fail-closed).
+            # Surface it loudly rather than silently dropping all inbound.
+            logger.error(
+                "farcaster: FARCASTER_WEBHOOK_SECRET not set — inbound casts "
+                "cannot be verified and will ALL be rejected. Set the secret to "
+                "enable inbound."
+            )
+        try:
+            from aiohttp import web
+        except Exception:  # pragma: no cover - aiohttp ships with Hermes
+            logger.error("farcaster: aiohttp unavailable — inbound disabled")
+            return
+
+        app = web.Application()
+        app.router.add_post("/webhooks/farcaster", self._handle_webhook)
+        app.router.add_get("/health", lambda _req: web.Response(text="ok"))
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, "0.0.0.0", port)
+        await site.start()
+        self._runner = runner
+        logger.info(
+            "farcaster: inbound webhook server on :%s/webhooks/farcaster", port
+        )
+
+    async def _handle_webhook(self, request: Any) -> Any:
+        """aiohttp handler for ``POST /webhooks/farcaster``.
+
+        Verifies the Neynar HMAC over the RAW request body (never a
+        re-serialization — that would never match the bytes Neynar signed),
+        then normalizes + dispatches. 401 on bad/absent signature or missing
+        secret, 400 on malformed JSON, 200 when dispatched, 202 when
+        accepted-but-ignored (so Neynar doesn't retry).
+        """
+
+        from aiohttp import web
+
+        raw = await request.read()
+        signature = request.headers.get("X-Neynar-Signature")
+        if not self._verify_signature(raw, signature):
+            logger.warning(
+                "farcaster: rejected webhook (bad/absent signature or no secret)"
+            )
+            return web.Response(status=401, text="invalid signature")
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            return web.Response(status=400, text="invalid json")
+        accepted = await self.handle_webhook(payload)
+        return web.Response(status=200 if accepted else 202, text="ok")
+
+    async def handle_webhook(self, payload: Dict[str, Any]) -> bool:
+        """Normalize + dispatch one already-verified Neynar webhook payload.
+
+        Signature verification happens in :meth:`_handle_webhook` (the HTTP
+        layer) where the RAW body is available — by the time we hold a parsed
+        ``payload`` the bytes Neynar signed are gone. This decides addressing +
+        dispatch only. Returns ``True`` when dispatched, ``False`` when ignored
+        (wrong event type / not addressed to us); the HTTP layer maps ``False``
+        to 202 so Neynar doesn't retry.
+        """
 
         if not self._is_addressed_to_us(payload):
             return False
@@ -288,29 +363,26 @@ class FarcasterAdapter:
 
     def _verify_signature(
         self,
-        payload: Dict[str, Any],
+        raw_body: bytes,
         signature: Optional[str],
     ) -> bool:
         """HMAC-SHA512 verification per Neynar's docs.
 
-        Imported lazily so the adapter has no hard crypto dependency
-        when webhooks are run without HMAC (e.g. in dev/test). The
-        crypto path executes only when ``webhook_secret`` is set in
-        config.
+        Neynar signs the RAW request-body bytes (``X-Neynar-Signature``), so we
+        MUST HMAC those exact bytes — a re-serialized / canonicalized payload
+        would never match what Neynar signed. Fail-closed: no configured secret
+        OR no signature rejects, since inbound is untrusted without the secret.
         """
 
         import hashlib
         import hmac
-        import json
 
-        if not signature:
+        secret = self._config.webhook_secret
+        if not secret or not signature:
             return False
-
-        secret = self._config.webhook_secret or ""
-        serialized = json.dumps(payload, separators=(",", ":"), sort_keys=True)
         expected = hmac.new(
             secret.encode("utf-8"),
-            serialized.encode("utf-8"),
+            raw_body,
             hashlib.sha512,
         ).hexdigest()
         return hmac.compare_digest(expected, signature)
