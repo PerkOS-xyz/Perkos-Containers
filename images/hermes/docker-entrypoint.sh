@@ -87,6 +87,61 @@ export FARCASTER_ENABLED
 envsubst < /opt/perkos/hermes.template.yaml > "$HERMES_HOME/config.yaml"
 chmod 644 "$HERMES_HOME/config.yaml"
 
+# Capability toggles. PERKOS_DISABLED_TOOLS is a comma-separated list of the
+# built-in capability ids the wallet turned OFF in the wizard (web-search,
+# code-execution, browser, memory). Empty/unset → we append NOTHING and the
+# config keeps Hermes' upstream default (the hermes-cli bundle = every
+# toolset), so existing/untoggled launches render identically to before.
+#
+# Hermes has no documented per-toolset deny key in config.yaml (disabling is
+# otherwise an interactive `/tools disable`). The non-interactive way to drop
+# a toolset is to define an explicit custom bundle = (default toolsets minus
+# the disabled ones) and point `toolsets:` at it. Toolset names + the default
+# hermes-cli membership per hermes-agent.nousresearch.com/docs/reference/toolsets-reference.
+if [ -n "${PERKOS_DISABLED_TOOLS:-}" ]; then
+  # Canonical hermes-cli default toolset membership. Kept explicit (not a
+  # bundle reference) because we're rebuilding the list minus exclusions; if
+  # upstream adds a default toolset, add it here too. perkos-board lives in
+  # mcp_servers and perkos-knowledge in plugins.enabled — both orthogonal to
+  # toolsets, so they're unaffected by this block.
+  DEFAULT_TOOLSETS="file terminal web browser memory skills vision image_gen todo tts delegation code_execution cronjob session_search clarify safe"
+  DROP=""
+  _OLDIFS=$IFS
+  IFS=','
+  for _cap in $PERKOS_DISABLED_TOOLS; do
+    _cap=$(printf '%s' "$_cap" | tr -d '[:space:]')
+    case "$_cap" in
+      web-search)     DROP="$DROP web" ;;
+      code-execution) DROP="$DROP code_execution" ;;
+      browser)        DROP="$DROP browser" ;;
+      memory)         DROP="$DROP memory" ;;
+      "")             ;;
+      *) echo "perkos-entrypoint: WARNING unknown disabled-tool id '$_cap' — ignored" >&2 ;;
+    esac
+  done
+  IFS=$_OLDIFS
+  if [ -n "$DROP" ]; then
+    KEEP=""
+    for _ts in $DEFAULT_TOOLSETS; do
+      _drop=false
+      for _d in $DROP; do [ "$_ts" = "$_d" ] && { _drop=true; break; }; done
+      $_drop || KEEP="$KEEP $_ts"
+    done
+    KEEP_YAML=$(printf '%s' "$KEEP" | sed 's/^ *//; s/ *$//; s/  */, /g')
+    {
+      echo ""
+      echo "# PerkOS capability toggles (PERKOS_DISABLED_TOOLS): explicit toolset"
+      echo "# bundle = hermes-cli default minus the capabilities the wallet turned"
+      echo "# off in the wizard. Dropped:$DROP"
+      echo "custom_toolsets:"
+      echo "  perkos-default: [$KEEP_YAML]"
+      echo "toolsets:"
+      echo "  - perkos-default"
+    } >> "$HERMES_HOME/config.yaml"
+    echo "perkos-entrypoint: capability toggles applied — dropped toolsets:$DROP"
+  fi
+fi
+
 # Stage our skill into the place Hermes scans. We baked it into
 # /opt/perkos-skills/ in the Dockerfile (under root) and copy it now into
 # HERMES_HOME/skills/ before upstream chowns the tree. Upstream's

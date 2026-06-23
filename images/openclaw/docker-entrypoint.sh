@@ -69,6 +69,33 @@ DISCORD_PLUGIN_ENABLED=$(truthy "${DISCORD_ENABLED:-}")
 # tokens on every turn.
 WORKBOARD_PLUGIN_ENABLED=$(truthy "${PERKOS_WORKBOARD_ENABLED:-}")
 
+# Capability toggles. PERKOS_DISABLED_TOOLS is a comma-separated list of the
+# built-in capability ids the wallet turned OFF in the wizard's Capabilities
+# step (web-search, code-execution, browser, memory). Empty/unset → nothing
+# disabled → identical config to before (every built-in tool stays on).
+#
+# OpenClaw enforces a global tool allow/deny policy where deny wins over allow
+# AND over per-plugin enablement, is case-insensitive, and supports wildcards.
+# Each capability id maps to the concrete tool ids that back it. We render
+# them into .tools.deny below. See docs.openclaw.ai/gateway/config-tools.
+DENY_TOOLS=""
+add_deny() { for _t in "$@"; do DENY_TOOLS="$DENY_TOOLS $_t"; done; }
+_OLDIFS=$IFS
+IFS=','
+for _cap in ${PERKOS_DISABLED_TOOLS:-}; do
+  _cap=$(printf '%s' "$_cap" | tr -d '[:space:]')
+  case "$_cap" in
+    web-search)      add_deny web_search ;;
+    code-execution)  add_deny exec process code_execution ;;
+    browser)         add_deny browser ;;
+    memory)          add_deny memory_search memory_get ;;
+    "")              ;;
+    *) echo "perkos-entrypoint: WARNING unknown disabled-tool id '$_cap' — ignored" >&2 ;;
+  esac
+done
+IFS=$_OLDIFS
+DENY_TOOLS=$(printf '%s' "$DENY_TOOLS" | sed 's/^ *//; s/ *$//')
+
 # Substitute __FOO__ placeholders. jq is in the image already.
 #
 # Plugin enabled flags are substituted as STRINGS first and then
@@ -98,6 +125,7 @@ jq \
   --arg slack_plugin_enabled    "$SLACK_PLUGIN_ENABLED" \
   --arg discord_plugin_enabled  "$DISCORD_PLUGIN_ENABLED" \
   --arg workboard_enabled       "$WORKBOARD_PLUGIN_ENABLED" \
+  --arg deny_tools              "$DENY_TOOLS" \
   '
   (..|strings) |= (
     gsub("__PERKOS_AGENT_ID__";       $agent_id)
@@ -121,12 +149,21 @@ jq \
   | if $workboard_enabled == "true"
     then .plugins.entries.workboard = { enabled: true, config: {} }
     else . end
+  # Capability toggles: deny the tool ids backing each disabled capability.
+  # Only touch .tools when something is actually disabled, so the default
+  # (no toggles) renders byte-identical to before.
+  | if ($deny_tools | length) > 0
+    then .tools.deny = ($deny_tools | split(" ") | map(select(length > 0)))
+    else . end
   ' /opt/perkos/openclaw.template.json > "$OPENCLAW_CONFIG_PATH"
 
 chmod 600 "$OPENCLAW_CONFIG_PATH"
 
 echo "perkos-entrypoint: wrote $OPENCLAW_CONFIG_PATH (agent=$PERKOS_AGENT_NAME id=$PERKOS_AGENT_ID)"
 echo "perkos-entrypoint: channel plugins — telegram=$TELEGRAM_PLUGIN_ENABLED slack=$SLACK_PLUGIN_ENABLED discord=$DISCORD_PLUGIN_ENABLED"
+if [ -n "$DENY_TOOLS" ]; then
+  echo "perkos-entrypoint: capability toggles — tools.deny=[$DENY_TOOLS] (from PERKOS_DISABLED_TOOLS=${PERKOS_DISABLED_TOOLS:-})"
+fi
 
 # Bundled PerkOS skills (baked at /opt/perkos-skills/ in the Dockerfile).
 # Copy them into the workspace skills dir where OpenClaw auto-discovers
