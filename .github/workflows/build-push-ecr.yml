@@ -84,6 +84,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # QEMU registers binfmt handlers so the amd64 runner can cross-build
+      # the linux/arm64 variant via emulation.
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       # Pin the upstream by digest so this build is reproducible, and read
@@ -123,7 +127,7 @@ jobs:
         with:
           context: images/openclaw
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           build-args: |
             OPENCLAW_REF=${{ steps.upstream.outputs.ref }}
             OPENCLAW_TAG=${{ env.OPENCLAW_TAG }}
@@ -179,6 +183,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # QEMU registers binfmt handlers so the amd64 runner can cross-build
+      # the linux/arm64 variant via emulation.
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Resolve upstream digest
@@ -217,7 +225,7 @@ jobs:
         with:
           context: images/hermes
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           build-args: |
             HERMES_REF=${{ steps.upstream.outputs.ref }}
             HERMES_TAG=${{ env.HERMES_TAG }}
@@ -274,6 +282,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # QEMU registers binfmt handlers so the amd64 runner can cross-build
+      # the linux/arm64 variant via emulation.
+      - uses: docker/setup-qemu-action@v3
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Build perkos-a2a-bridge (load for testing)
@@ -294,7 +306,7 @@ jobs:
         with:
           context: images/perkos-a2a-bridge
           push: true
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           build-args: |
             PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
           tags: |
