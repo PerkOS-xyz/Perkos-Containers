@@ -19,9 +19,19 @@ on:
         required: false
         default: ""
 
+permissions:
+  contents: read
+  packages: write # publish the PUBLIC self-hosted images to GHCR (see below)
+
 env:
   AWS_REGION: us-east-1
   ECR_REGISTRY: 089332276762.dkr.ecr.us-east-1.amazonaws.com
+  # PUBLIC registry for the self-hosted deploy bundle. ECR (above) is private +
+  # for the PerkOS-managed ECS path; the docker-compose bundle a user runs on
+  # their OWN VPS pulls `:latest` from here, so these MUST be public packages.
+  # NOTE: one-time, mark each package Public in the org GHCR settings after the
+  # first push (Packages → perkos-{openclaw,hermes,a2a} → Change visibility).
+  GHCR_ORG: ghcr.io/perkos-xyz
   # Upstream repos to wrap. The moving `:latest` tag is resolved to a
   # concrete @sha256 digest at build time (see "Resolve upstream digest").
   OPENCLAW_REPO: ghcr.io/openclaw/openclaw
@@ -64,6 +74,15 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
+
+      # Also log in to GHCR to publish the PUBLIC self-hosted images the
+      # docker-compose bundle pulls (the runtime + bridge users run on their VPS).
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -112,6 +131,8 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/perkos-openclaw:${{ steps.tags.outputs.version }}
             ${{ env.ECR_REGISTRY }}/perkos-openclaw:latest
+            ${{ env.GHCR_ORG }}/perkos-openclaw:latest
+            ${{ env.GHCR_ORG }}/perkos-openclaw:${{ steps.tags.outputs.version }}
 
       - name: Register image (beta channel)
         env:
@@ -148,6 +169,15 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: aws-actions/amazon-ecr-login@v2
+
+      # Also log in to GHCR to publish the PUBLIC self-hosted images the
+      # docker-compose bundle pulls (the runtime + bridge users run on their VPS).
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: docker/setup-buildx-action@v3
 
@@ -196,6 +226,8 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/perkos-hermes:${{ steps.tags.outputs.version }}
             ${{ env.ECR_REGISTRY }}/perkos-hermes:latest
+            ${{ env.GHCR_ORG }}/perkos-hermes:latest
+            ${{ env.GHCR_ORG }}/perkos-hermes:${{ steps.tags.outputs.version }}
 
       - name: Register image (beta channel)
         env:
@@ -233,6 +265,15 @@ jobs:
 
       - uses: aws-actions/amazon-ecr-login@v2
 
+      # Also log in to GHCR to publish the PUBLIC self-hosted images the
+      # docker-compose bundle pulls (the runtime + bridge users run on their VPS).
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: docker/setup-buildx-action@v3
 
       - name: Build perkos-a2a-bridge (load for testing)
@@ -259,6 +300,8 @@ jobs:
           tags: |
             ${{ env.ECR_REGISTRY }}/perkos-a2a-bridge:${{ steps.tags.outputs.version }}
             ${{ env.ECR_REGISTRY }}/perkos-a2a-bridge:latest
+            ${{ env.GHCR_ORG }}/perkos-a2a:${{ env.PERKOS_A2A_VERSION }}
+            ${{ env.GHCR_ORG }}/perkos-a2a:latest
 
   # Behavior test: provision an ephemeral agent from each freshly-pushed
   # image, send canonical prompts (incl. a PM/plan-and-delegate prompt that
