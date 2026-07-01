@@ -228,16 +228,15 @@ if run_container perkos-openclaw-smoke-skills-bad-$$ -e PERKOS_AGENT_SKILLS_B64=
 fi
 
 # ---------------------------------------------------------------
-# Pass 6: multi-agent (co-resident agents) — Phase 1, NON-FATAL.
-# Boot with PERKOS_PROFILES_B64 (2 co-residents) + a primary persona; check the
-# renderer patched agents.list (primary default:true + co-residents) and wrote
-# each co-resident's AGENTS.md. Reports in the CI log WITHOUT gating image
-# promotion — the OpenClaw multi-agent boot is still being proven (mirrors the
-# Hermes rollout; flip to hard once green).
+# Pass 6: multi-agent (co-resident agents) — Phase 1, HARD.
+# Boot with PERKOS_PROFILES_B64 (2 co-residents) + a primary persona; assert the
+# renderer patched agents.list (primary default:true + co-residents), wrote each
+# co-resident's AGENTS.md, and the gateway boots stable with the list. Green in
+# CI (#31, 5/5 incl. gateway stable) so these are HARD — a regression fails the
+# build. OpenClaw serves agents.list natively (no api_server gymnastics Hermes
+# needed).
 # ---------------------------------------------------------------
-echo "== multi-agent (co-resident agents) — non-fatal =="
-mp_pass=0
-mp_warn=0
+echo "== multi-agent (co-resident agents) =="
 MP_SR="$(printf '%s' '# Researcher' | base64 | tr -d '\n')"
 MP_BK="$(printf '%s' '# Bookkeeper' | base64 | tr -d '\n')"
 MP_PRIMARY="$(printf '%s' '# PM primary' | base64 | tr -d '\n')"
@@ -246,27 +245,23 @@ MP_B64="$(printf '%s' "$MP_JSON" | base64 | tr -d '\n')"
 if run_container perkos-openclaw-smoke-multiagent-$$ \
     -e PERKOS_PROFILES_B64="$MP_B64" -e PERKOS_AGENT_SOUL_B64="$MP_PRIMARY"; then
   if docker exec "$CONTAINER" sh -c "jq -e '.agents.list | length == 3' $CFG" >/dev/null 2>&1; then
-    echo "  OK  multi-agent: agents.list has 3 agents (primary + 2 co-resident)"; mp_pass=$((mp_pass + 1))
-  else echo "  WARN multi-agent: agents.list is not 3 agents"; mp_warn=$((mp_warn + 1)); fi
+    pass "multi-agent: agents.list has 3 agents (primary + 2 co-resident)"
+  else fail "multi-agent: agents.list is not 3 agents"; fi
   if docker exec "$CONTAINER" sh -c "jq -e '[.agents.list[] | select(.default==true)] | length == 1' $CFG" >/dev/null 2>&1; then
-    echo "  OK  multi-agent: exactly one default agent (the primary)"; mp_pass=$((mp_pass + 1))
-  else echo "  WARN multi-agent: default-agent count != 1"; mp_warn=$((mp_warn + 1)); fi
+    pass "multi-agent: exactly one default agent (the primary)"
+  else fail "multi-agent: default-agent count != 1"; fi
   if docker exec "$CONTAINER" test -f /home/node/.openclaw/workspace-researcher/AGENTS.md 2>/dev/null; then
-    echo "  OK  multi-agent: researcher AGENTS.md written to its workspace"; mp_pass=$((mp_pass + 1))
-  else echo "  WARN multi-agent: researcher AGENTS.md missing"; mp_warn=$((mp_warn + 1)); fi
+    pass "multi-agent: researcher AGENTS.md written to its workspace"
+  else fail "multi-agent: researcher AGENTS.md missing"; fi
   if docker exec "$CONTAINER" test -f /home/node/.openclaw/workspace-bookkeeper/AGENTS.md 2>/dev/null; then
-    echo "  OK  multi-agent: bookkeeper AGENTS.md written to its workspace"; mp_pass=$((mp_pass + 1))
-  else echo "  WARN multi-agent: bookkeeper AGENTS.md missing"; mp_warn=$((mp_warn + 1)); fi
+    pass "multi-agent: bookkeeper AGENTS.md written to its workspace"
+  else fail "multi-agent: bookkeeper AGENTS.md missing"; fi
   sleep 10
   mp_state=$(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null || echo missing)
   mp_restarts=$(docker inspect "$CONTAINER" --format '{{.RestartCount}}' 2>/dev/null || echo 0)
   if [ "$mp_state" = "running" ] && [ "$mp_restarts" -eq 0 ]; then
-    echo "  OK  multi-agent: gateway stable with agents.list (state=$mp_state restarts=$mp_restarts)"; mp_pass=$((mp_pass + 1))
-  else
-    echo "  WARN multi-agent: gateway NOT stable (state=$mp_state restarts=$mp_restarts) — non-fatal"; mp_warn=$((mp_warn + 1))
-    docker logs "$CONTAINER" 2>&1 | tail -15 | sed 's/^/  /' || true
-  fi
+    pass "multi-agent: gateway stable with agents.list (state=$mp_state restarts=$mp_restarts)"
+  else fail "multi-agent: gateway NOT stable (state=$mp_state restarts=$mp_restarts)"; fi
 fi
-echo "== multi-agent: ${mp_pass} passed, ${mp_warn} warned (non-fatal) =="
 
 exit "$ok"
