@@ -28,6 +28,37 @@ ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 MAX_PROFILES = 32
 
 
+def strip_api_server(config_text):
+    """Remove the `platforms.api_server` block from a rendered profile config.
+
+    In multiplex mode Hermes REQUIRES the port-binding api_server platform to be
+    ABSENT from secondary profiles (not just `enabled: false`): the default
+    profile owns the single shared HTTP listener and serves every profile via a
+    `/p/<profile>/` prefix. Leaving the block in — even disabled — makes the
+    gateway multiplexer refuse to start ("a secondary profile cannot bind its
+    own port"). So we drop the whole block from co-resident configs.
+
+    Structural strip: remove the 2-space-indented `api_server:` key and its
+    deeper-indented body, stopping at the next sibling key.
+    """
+    out = []
+    lines = config_text.splitlines(keepends=True)
+    i = 0
+    n = len(lines)
+    while i < n:
+        line = lines[i]
+        # Match `  api_server:` at exactly 2-space indent (a platforms child).
+        if line.startswith("  ") and not line[2:3] == " " and line.strip() == "api_server:":
+            i += 1
+            # Skip the block body: deeper-indented (>=4 spaces) or blank lines.
+            while i < n and (lines[i].strip() == "" or lines[i].startswith("    ")):
+                i += 1
+            continue
+        out.append(line)
+        i += 1
+    return "".join(out)
+
+
 def _ok(msg):
     """Log and exit 0: a bad payload must never abort the container boot."""
     print(f"perkos-render-profiles: {msg}")
@@ -99,6 +130,10 @@ def main():
         except Exception as e:  # noqa: BLE001
             print(f"perkos-render-profiles: envsubst failed for {pid} ({e}) — skipped")
             continue
+        # A secondary profile must NOT carry the api_server platform — the
+        # default profile owns the shared listener (else the multiplexer refuses
+        # to boot). Drop the block entirely.
+        rendered = strip_api_server(rendered)
         with open(os.path.join(pdir, "config.yaml"), "w", encoding="utf-8") as f:
             f.write(rendered)
 
