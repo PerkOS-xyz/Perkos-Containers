@@ -107,7 +107,13 @@ platforms:
     enabled: ${API_SERVER_ENABLED}
     host: ${API_SERVER_HOST}
     port: ${API_SERVER_PORT}
-    key_env: API_SERVER_KEY
+    # Inline key (not key_env): the adapter reads extra["key"] first, falling
+    # back to os.getenv("API_SERVER_KEY") (gateway/platforms/api_server.py). An
+    # inline key lets multi-agent mode UNSET API_SERVER_KEY from the gateway env
+    # (so Hermes doesn't force-enable api_server for co-resident profiles and
+    # crash the multiplexer) while the default profile still binds. Single-agent
+    # resolves to the same value, so behavior is unchanged.
+    key: ${API_SERVER_KEY}
   telegram:
     enabled: ${TELEGRAM_ENABLED}
     token_env: TELEGRAM_BOT_TOKEN
