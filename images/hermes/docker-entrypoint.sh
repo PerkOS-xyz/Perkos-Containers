@@ -335,6 +335,38 @@ PYSKILLS
   chown -R 10000:10000 "${HERMES_HOME:-/opt/data}/skills" 2>/dev/null || true
 fi
 
+# ── Multi-agent profiles (co-resident agents in one runtime) ─────────────────
+# SPIKE (Phase 1 — PHASE-1-MULTI-AGENT-DESIGN.md). The PRIMARY agent is the
+# default profile at HERMES_HOME (rendered above from PERKOS_AGENT_*, unchanged).
+# When PERKOS_PROFILES_B64 is set this runtime ALSO hosts the co-resident agents
+# it carries: each becomes a named profile under $HERMES_HOME/profiles/<id>/
+# (own config.yaml + SOUL.md + .env for secret isolation) and we flip the gateway
+# into multiplex mode so it serves the default + every named profile. Absent →
+# no-op; the single-agent boot above is byte-identical to before. Per-profile
+# skills/toolsets are a follow-up. VALIDATE with a Docker build + 2-profile smoke
+# test before shipping this image (the render logic has a local unit test).
+if [ -n "${PERKOS_PROFILES_B64:-}" ]; then
+  echo "perkos-entrypoint: rendering co-resident agent profiles..."
+  if PERKOS_PROFILES_B64="$PERKOS_PROFILES_B64" \
+     HERMES_HOME="${HERMES_HOME:-/opt/data}" \
+     PERKOS_TEMPLATE="/opt/perkos/hermes.template.yaml" \
+     python3 /usr/local/bin/perkos-render-profiles.py; then
+    # The gateway reads multiplex_profiles from the default profile's config
+    # (gateway/config.py accepts the top-level key). Append it once, idempotently.
+    if ! grep -q '^multiplex_profiles:' "${HERMES_HOME:-/opt/data}/config.yaml"; then
+      {
+        echo ""
+        echo "# PerkOS multi-agent: serve the default + every named profile"
+        echo "multiplex_profiles: true"
+      } >> "${HERMES_HOME:-/opt/data}/config.yaml"
+    fi
+    chown -R 10000:10000 "${HERMES_HOME:-/opt/data}/profiles" 2>/dev/null || true
+    echo "perkos-entrypoint: multi-agent multiplex enabled"
+  else
+    echo "perkos-entrypoint: profile render failed — continuing single-agent"
+  fi
+fi
+
 # ── Periodic state snapshot (hibernation backup) ────────────────────────────
 # Snapshot HERMES_HOME → S3 (client-side encrypted) every
 # PERKOS_SNAPSHOT_INTERVAL_SEC so a hibernated agent can be restored/cloned on
