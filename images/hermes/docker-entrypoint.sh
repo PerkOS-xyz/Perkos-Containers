@@ -361,7 +361,17 @@ if [ -n "${PERKOS_PROFILES_B64:-}" ]; then
       } >> "${HERMES_HOME:-/opt/data}/config.yaml"
     fi
     chown -R 10000:10000 "${HERMES_HOME:-/opt/data}/profiles" 2>/dev/null || true
-    echo "perkos-entrypoint: multi-agent multiplex enabled"
+    # Co-resident profiles must NOT inherit API_SERVER_KEY / API_SERVER_ENABLED:
+    # Hermes' _apply_env_overrides force-enables the api_server platform for
+    # EVERY profile when either is present in the gateway env, and the
+    # multiplexer then rejects a secondary profile that binds a port → the
+    # gateway exits ~18s in. The default profile now carries its api_server key
+    # INLINE in config.yaml (hermes.template.yaml `key:`), so it still binds.
+    # Unset them for the gateway process so ONLY the default owns the shared
+    # listener (served to each profile via /p/<profile>/). Single-agent never
+    # enters this block, so its env is untouched.
+    unset API_SERVER_KEY API_SERVER_ENABLED || true
+    echo "perkos-entrypoint: unset API_SERVER_KEY/ENABLED for multiplex (default owns the listener)"
   else
     echo "perkos-entrypoint: profile render failed — continuing single-agent"
   fi
