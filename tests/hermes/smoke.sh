@@ -299,7 +299,13 @@ MP_SOUL_K="$(printf '# Bookkeeper persona' | base64 | tr -d '\n')"
 MP_JSON="[{\"id\":\"researcher\",\"name\":\"Researcher\",\"soulB64\":\"${MP_SOUL_R}\",\"llmApiKey\":\"mp-key-a\",\"llmModel\":\"gpt-4o-mini\"},{\"id\":\"bookkeeper\",\"name\":\"Bookkeeper\",\"soulB64\":\"${MP_SOUL_K}\",\"llmApiKey\":\"mp-key-b\"}]"
 MP_B64="$(printf '%s' "$MP_JSON" | base64 | tr -d '\n')"
 
+# Strong API_SERVER_KEY (>=16 chars): the base ENV_ARGS key is a short dummy,
+# which api_server refuses ("placeholder or too short") — masking whether the
+# key actually resolves. A strong key lets us assert api_server truly BINDS in
+# multiplex mode (the gap that let the extra.key regression through: api_server
+# failure is non-fatal, so "gateway stable" alone doesn't prove it started).
 docker run -d --name "$MP_C" "${ENV_ARGS[@]}" \
+  -e API_SERVER_KEY=smoke-strong-key-0123456789abcdef \
   -e PERKOS_PROFILES_B64="$MP_B64" "$IMAGE" gateway run >/dev/null \
   || mp_fail "multi-agent container failed to start"
 
@@ -338,6 +344,16 @@ while [ "$(date +%s)" -lt "$mp_deadline" ]; do
   sleep 3
 done
 pass "multi-agent: gateway stable in multiplex mode (state=$mp_state restarts=$mp_restarts)"
+# The api_server MUST actually bind (the default profile owns the shared HTTP
+# listener the bridge posts to). It failing is NON-fatal to the gateway, so the
+# stability check above doesn't catch it — assert it explicitly. The default
+# config must carry the key under `extra:` (a top-level `key:` is NOT parsed),
+# and multi-agent must NOT leave api_server unkeyed. (Regression found live
+# 2026-07-01: co-resident routing failed because api_server never started.)
+mp_check "multi-agent: default config has api_server key under extra (not top-level)" \
+  "docker exec '$MP_C' sh -c 'grep -A6 \"^  api_server:\" /opt/data/config.yaml | grep -qE \"^    extra:\"'"
+mp_check "multi-agent: api_server did NOT refuse to start (key resolved + bound)" \
+  "! docker logs '$MP_C' 2>&1 | grep -qE 'Refusing to start: API_SERVER_KEY|api_server: failed to connect'"
 docker rm -f "$MP_C" >/dev/null 2>&1 || true
 
 echo ""
