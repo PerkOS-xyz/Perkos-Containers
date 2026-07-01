@@ -80,6 +80,23 @@ jqok() {
   fi
 }
 
+wait_jq() {
+  # wait_jq "<description>" '<jq filter>' — poll until the filter is truthy or
+  # TIMEOUT_BOOT_SECS elapses, then pass/fail. run_container only waits for the
+  # BASE config to appear; steps the entrypoint runs LATER (e.g. the multi-agent
+  # agents.list patch) may not be applied yet, so a single jqok races them. Use
+  # this as the FIRST assertion after a later-stage render so the config has
+  # settled before the follow-on single-shot checks read it.
+  local waited=0
+  while [ "$waited" -lt "$TIMEOUT_BOOT_SECS" ]; do
+    if docker exec "$CONTAINER" sh -c "jq -e '$2' $CFG" >/dev/null 2>&1; then
+      pass "$1"; return 0
+    fi
+    sleep 1; waited=$((waited + 1))
+  done
+  fail "$1 (timed out after ${TIMEOUT_BOOT_SECS}s)"; return 1
+}
+
 # ---------------------------------------------------------------
 # Pass 1: baseline boot. Assert the current schema renders with the
 # env-var substitutions applied.
@@ -240,13 +257,19 @@ echo "== multi-agent (co-resident agents) =="
 MP_SR="$(printf '%s' '# Researcher' | base64 | tr -d '\n')"
 MP_BK="$(printf '%s' '# Bookkeeper' | base64 | tr -d '\n')"
 MP_PRIMARY="$(printf '%s' '# PM primary' | base64 | tr -d '\n')"
-MP_JSON="[{\"id\":\"researcher\",\"name\":\"Researcher\",\"soulB64\":\"${MP_SR}\"},{\"id\":\"bookkeeper\",\"name\":\"Bookkeeper\",\"soulB64\":\"${MP_BK}\"}]"
+# `scout` carries its OWN llmApiKey (per-renter key isolation, Phase 2): the
+# renderer must clone the base provider into `perkos-scout` with that key and
+# point scout's agents.list model at it. researcher/bookkeeper have no key → they
+# inherit agents.defaults (no own provider, no model override).
+MP_SC="$(printf '%s' '# Scout' | base64 | tr -d '\n')"
+MP_JSON="[{\"id\":\"researcher\",\"name\":\"Researcher\",\"soulB64\":\"${MP_SR}\"},{\"id\":\"bookkeeper\",\"name\":\"Bookkeeper\",\"soulB64\":\"${MP_BK}\"},{\"id\":\"scout\",\"name\":\"Scout\",\"soulB64\":\"${MP_SC}\",\"llmApiKey\":\"pllm-scout-own-key\"}]"
 MP_B64="$(printf '%s' "$MP_JSON" | base64 | tr -d '\n')"
 if run_container perkos-openclaw-smoke-multiagent-$$ \
     -e PERKOS_PROFILES_B64="$MP_B64" -e PERKOS_AGENT_SOUL_B64="$MP_PRIMARY"; then
-  if docker exec "$CONTAINER" sh -c "jq -e '.agents.list | length == 3' $CFG" >/dev/null 2>&1; then
-    pass "multi-agent: agents.list has 3 agents (primary + 2 co-resident)"
-  else fail "multi-agent: agents.list is not 3 agents"; fi
+  # The agents.list patch is a LATE entrypoint step — wait for it before the
+  # follow-on single-shot checks (fixes the pre-existing race where the smoke
+  # asserted agents.list before the co-resident render had run).
+  wait_jq "multi-agent: agents.list has 4 agents (primary + 3 co-resident)" '.agents.list | length == 4'
   if docker exec "$CONTAINER" sh -c "jq -e '[.agents.list[] | select(.default==true)] | length == 1' $CFG" >/dev/null 2>&1; then
     pass "multi-agent: exactly one default agent (the primary)"
   else fail "multi-agent: default-agent count != 1"; fi
@@ -256,6 +279,16 @@ if run_container perkos-openclaw-smoke-multiagent-$$ \
   if docker exec "$CONTAINER" test -f /home/node/.openclaw/workspace-bookkeeper/AGENTS.md 2>/dev/null; then
     pass "multi-agent: bookkeeper AGENTS.md written to its workspace"
   else fail "multi-agent: bookkeeper AGENTS.md missing"; fi
+  # Per-renter key isolation (Phase 2): scout has its OWN provider + model ref.
+  if docker exec "$CONTAINER" sh -c "jq -e '.models.providers[\"perkos-scout\"].apiKey == \"pllm-scout-own-key\"' $CFG" >/dev/null 2>&1; then
+    pass "multi-agent: scout has own-key provider perkos-scout with its key"
+  else fail "multi-agent: scout own-key provider missing/wrong key"; fi
+  if docker exec "$CONTAINER" sh -c "jq -e '(.agents.list[] | select(.id==\"scout\").model.primary) | startswith(\"perkos-scout/\")' $CFG" >/dev/null 2>&1; then
+    pass "multi-agent: scout agent model routes to its own-key provider"
+  else fail "multi-agent: scout model does not point at perkos-scout"; fi
+  if docker exec "$CONTAINER" sh -c "jq -e '(.agents.list[] | select(.id==\"researcher\") | has(\"model\")) == false' $CFG" >/dev/null 2>&1; then
+    pass "multi-agent: keyless researcher inherits agents.defaults (no model override)"
+  else fail "multi-agent: keyless co-resident wrongly got a model override"; fi
   sleep 10
   mp_state=$(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null || echo missing)
   mp_restarts=$(docker inspect "$CONTAINER" --format '{{.RestartCount}}' 2>/dev/null || echo 0)
