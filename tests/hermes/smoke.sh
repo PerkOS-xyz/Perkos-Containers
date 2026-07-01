@@ -275,64 +275,65 @@ else
 fi
 docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
 
-# --- Multi-agent profiles (PERKOS_PROFILES_B64) — Phase 1 spike ---
+# --- Multi-agent profiles (PERKOS_PROFILES_B64) — Phase 1 ---
 # Boot a container hosting 2 CO-RESIDENT profiles beyond the default agent and
-# check each becomes a named Hermes profile (own config + SOUL + isolated LLM
-# key), that multiplex is flipped on, and that the gateway still boots.
-# NON-FATAL by design: this validates the new multi-agent path
-# (PHASE-1-MULTI-AGENT-DESIGN.md) and REPORTS in the CI log WITHOUT gating image
-# promotion, since the multiplex boot is still being proven end-to-end. Flip the
-# mp_check helper to hard-fail (fail "...") once these are observed green in CI.
+# assert each becomes a named Hermes profile (own config + SOUL + isolated LLM
+# key), that multiplex is flipped on, and that the gateway boots + stays up in
+# multiplex mode. Validated green in CI (PerkOS-Containers #25, 9/9) so these
+# are now HARD asserts — a regression fails the build. Design:
+# PHASE-1-MULTI-AGENT-DESIGN.md.
 echo ""
-echo "▶ multi-agent (co-resident profiles) — non-fatal validation ..."
+echo "▶ multi-agent (co-resident profiles) ..."
 MP_C="perkos-hermes-smoke-multiagent-$$"
-mp_pass=0
-mp_warn=0
-mp_check() { # $1 label, $2 test command (eval'd)
-  if eval "$2" >/dev/null 2>&1; then
-    echo "  ✅ $1"
-    mp_pass=$((mp_pass + 1))
-  else
-    echo "  ⚠️  $1"
-    mp_warn=$((mp_warn + 1))
-  fi
+mp_fail() {
+  echo "❌ FAIL: $1" >&2
+  echo "--- multi-agent container logs (last 40) ---" >&2
+  docker logs "$MP_C" 2>&1 | tail -40 >&2 || true
+  docker rm -f "$MP_C" >/dev/null 2>&1 || true
+  exit 1
 }
+mp_check() { if eval "$2" >/dev/null 2>&1; then pass "$1"; else mp_fail "$1"; fi; }
 
 MP_SOUL_R="$(printf '# Researcher persona' | base64 | tr -d '\n')"
 MP_SOUL_K="$(printf '# Bookkeeper persona' | base64 | tr -d '\n')"
 MP_JSON="[{\"id\":\"researcher\",\"name\":\"Researcher\",\"soulB64\":\"${MP_SOUL_R}\",\"llmApiKey\":\"mp-key-a\",\"llmModel\":\"gpt-4o-mini\"},{\"id\":\"bookkeeper\",\"name\":\"Bookkeeper\",\"soulB64\":\"${MP_SOUL_K}\",\"llmApiKey\":\"mp-key-b\"}]"
 MP_B64="$(printf '%s' "$MP_JSON" | base64 | tr -d '\n')"
 
-if docker run -d --name "$MP_C" "${ENV_ARGS[@]}" \
-    -e PERKOS_PROFILES_B64="$MP_B64" "$IMAGE" gateway run >/dev/null 2>&1; then
-  # Wait for the entrypoint to render the profiles before the gateway handoff.
-  for _ in $(seq 1 25); do
-    docker exec "$MP_C" test -f /opt/data/profiles/researcher/config.yaml 2>/dev/null && break
-    sleep 2
-  done
-  mp_check "researcher profile rendered (config.yaml)" "docker exec '$MP_C' test -f /opt/data/profiles/researcher/config.yaml"
-  mp_check "bookkeeper profile rendered (config.yaml)" "docker exec '$MP_C' test -f /opt/data/profiles/bookkeeper/config.yaml"
-  mp_check "researcher SOUL.md written" "docker exec '$MP_C' test -f /opt/data/profiles/researcher/SOUL.md"
-  mp_check "researcher .env carries its own key" "docker exec '$MP_C' grep -q mp-key-a /opt/data/profiles/researcher/.env"
-  mp_check "researcher .env has NO sibling key (isolation)" "! docker exec '$MP_C' grep -q mp-key-b /opt/data/profiles/researcher/.env"
-  mp_check "per-profile model override (researcher -> gpt-4o-mini)" "docker exec '$MP_C' grep -q 'default: gpt-4o-mini' /opt/data/profiles/researcher/config.yaml"
-  mp_check "gateway.multiplex_profiles enabled" "docker exec '$MP_C' grep -q '^multiplex_profiles: true' /opt/data/config.yaml"
-  mp_check "default (primary) config.yaml intact" "docker exec '$MP_C' test -f /opt/data/config.yaml"
-  # Let the gateway settle, then confirm multiplex mode didn't crash the boot.
-  sleep 8
+docker run -d --name "$MP_C" "${ENV_ARGS[@]}" \
+  -e PERKOS_PROFILES_B64="$MP_B64" "$IMAGE" gateway run >/dev/null \
+  || mp_fail "multi-agent container failed to start"
+
+# Wait for the entrypoint to render the profiles before the gateway handoff.
+mp_rendered=""
+for _ in $(seq 1 25); do
+  if docker exec "$MP_C" test -f /opt/data/profiles/researcher/config.yaml 2>/dev/null; then mp_rendered=1; break; fi
+  sleep 2
+done
+[ -n "$mp_rendered" ] || mp_fail "researcher profile never rendered"
+
+mp_check "multi-agent: researcher profile rendered" "docker exec '$MP_C' test -f /opt/data/profiles/researcher/config.yaml"
+mp_check "multi-agent: bookkeeper profile rendered" "docker exec '$MP_C' test -f /opt/data/profiles/bookkeeper/config.yaml"
+mp_check "multi-agent: researcher SOUL.md written" "docker exec '$MP_C' test -f /opt/data/profiles/researcher/SOUL.md"
+mp_check "multi-agent: researcher .env carries its own key" "docker exec '$MP_C' grep -q mp-key-a /opt/data/profiles/researcher/.env"
+mp_check "multi-agent: researcher .env has NO sibling key (isolation)" "! docker exec '$MP_C' grep -q mp-key-b /opt/data/profiles/researcher/.env"
+mp_check "multi-agent: per-profile model override (researcher -> gpt-4o-mini)" "docker exec '$MP_C' grep -q 'default: gpt-4o-mini' /opt/data/profiles/researcher/config.yaml"
+mp_check "multi-agent: gateway.multiplex_profiles enabled" "docker exec '$MP_C' grep -q '^multiplex_profiles: true' /opt/data/config.yaml"
+mp_check "multi-agent: default (primary) config.yaml intact" "docker exec '$MP_C' test -f /opt/data/config.yaml"
+
+# Gateway must boot AND stay up in multiplex mode — fail on exit or any restart
+# within the window (mirrors the single-agent stability guard above; non-flaky).
+mp_deadline=$(( $(date +%s) + 30 ))
+mp_state=running
+mp_restarts=0
+while [ "$(date +%s)" -lt "$mp_deadline" ]; do
   mp_state=$(docker inspect "$MP_C" --format '{{.State.Status}}' 2>/dev/null || echo missing)
   mp_restarts=$(docker inspect "$MP_C" --format '{{.RestartCount}}' 2>/dev/null || echo 0)
-  mp_check "gateway stable in multiplex mode (state=$mp_state restarts=$mp_restarts)" "[ '$mp_state' = running ] && [ '$mp_restarts' -eq 0 ]"
-  if [ "$mp_warn" -gt 0 ]; then
-    echo "  --- multi-agent container logs (last 25) ---"
-    docker logs "$MP_C" 2>&1 | tail -25 | sed 's/^/  /'
-  fi
-  docker rm -f "$MP_C" >/dev/null 2>&1 || true
-else
-  echo "  ⚠️  multi-agent container failed to start"
-  mp_warn=$((mp_warn + 1))
-fi
-echo "▶ multi-agent validation: ${mp_pass} passed, ${mp_warn} warned (non-fatal)"
+  [ "$mp_state" = "exited" ] && mp_fail "multi-agent: container exited in multiplex mode (restarts=$mp_restarts)"
+  [ "$mp_restarts" -gt 0 ] && mp_fail "multi-agent: container restarted in multiplex mode (restarts=$mp_restarts)"
+  sleep 3
+done
+pass "multi-agent: gateway stable in multiplex mode (state=$mp_state restarts=$mp_restarts)"
+docker rm -f "$MP_C" >/dev/null 2>&1 || true
 
 echo ""
 echo "✅ All smoke checks passed for $IMAGE"
