@@ -200,6 +200,28 @@ if [ -n "${PERKOS_AGENT_SOUL_B64:-}" ]; then
   fi
 fi
 
+# ── Multi-agent (co-resident agents in one runtime) — Phase 1 spike ───────────
+# The PRIMARY agent is the default (rendered above from PERKOS_AGENT_*,
+# unchanged). When PERKOS_PROFILES_B64 is set this runtime ALSO hosts the
+# co-resident agents it carries: the renderer patches the openclaw.json with an
+# `agents.list` (primary default:true + one entry per co-resident, each with its
+# own workspace) and writes each co-resident's AGENTS.md. OpenClaw routes by
+# agentId natively. Absent → no-op; single-agent boot is unchanged. Co-residents
+# inherit agents.defaults (model, etc.); per-agent model + state isolation are
+# follow-ups. VALIDATE with a Docker build + 2-agent smoke before shipping.
+if [ -n "${PERKOS_PROFILES_B64:-}" ]; then
+  echo "perkos-entrypoint: rendering co-resident agents into agents.list..."
+  OPENCLAW_CONFIG_PATH="$OPENCLAW_CONFIG_PATH" \
+  OPENCLAW_WORKSPACE="${OPENCLAW_WORKSPACE:-$CONFIG_DIR/workspace}" \
+  PERKOS_PROFILES_B64="$PERKOS_PROFILES_B64" \
+  PERKOS_AGENT_ID="$PERKOS_AGENT_ID" \
+  PERKOS_AGENT_NAME="$PERKOS_AGENT_NAME" \
+  PERKOS_AGENT_SOUL_B64="${PERKOS_AGENT_SOUL_B64:-}" \
+  python3 /usr/local/bin/perkos-render-openclaw-agents.py \
+    || echo "perkos-entrypoint: co-resident render failed — continuing single-agent"
+  chmod 600 "$OPENCLAW_CONFIG_PATH" 2>/dev/null || true
+fi
+
 # ── Restore a hibernation snapshot if one exists (no-op on first ever launch
 # or when PERKOS_HIBERNATION_S3_URI is unset). Runs AFTER the config render +
 # persona/bundled-skill writes (the snapshot's deterministic copies just win,

@@ -49,9 +49,11 @@ COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
 # Hibernation snapshot/restore (generic, shared verbatim with the Hermes image).
 COPY snapshot.sh /usr/local/bin/perkos-snapshot.sh
 COPY restore.sh /usr/local/bin/perkos-restore.sh
+COPY perkos-render-openclaw-agents.py /usr/local/bin/perkos-render-openclaw-agents.py
 RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh \
               /usr/local/bin/perkos-snapshot.sh \
-              /usr/local/bin/perkos-restore.sh
+              /usr/local/bin/perkos-restore.sh \
+              /usr/local/bin/perkos-render-openclaw-agents.py
 
 # PerkOS metadata
 LABEL org.opencontainers.image.title="PerkOS-OpenClaw" \
