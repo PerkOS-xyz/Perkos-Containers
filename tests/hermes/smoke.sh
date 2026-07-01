@@ -278,10 +278,10 @@ docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
 # --- Multi-agent profiles (PERKOS_PROFILES_B64) — Phase 1 ---
 # Boot a container hosting 2 CO-RESIDENT profiles beyond the default agent and
 # assert each becomes a named Hermes profile (own config + SOUL + isolated LLM
-# key) and that multiplex is flipped on. Those render/isolation checks are HARD
-# (deterministic + green). The gateway-stability check is a WARN: multiplex boot
-# is blocked upstream (api_server env force-enable — see the note below), and
-# single-agent must keep shipping. Design: PHASE-1-MULTI-AGENT-DESIGN.md.
+# key), that multiplex is flipped on, and that the gateway boots + stays up in
+# multiplex mode. All HARD asserts — green in CI once the api_server force-enable
+# blocker was fixed (#29). A regression fails the build. Design:
+# PHASE-1-MULTI-AGENT-DESIGN.md.
 echo ""
 echo "▶ multi-agent (co-resident profiles) ..."
 MP_C="perkos-hermes-smoke-multiagent-$$"
@@ -320,27 +320,24 @@ mp_check "multi-agent: per-profile model override (researcher -> gpt-4o-mini)" "
 mp_check "multi-agent: gateway.multiplex_profiles enabled" "docker exec '$MP_C' grep -q '^multiplex_profiles: true' /opt/data/config.yaml"
 mp_check "multi-agent: default (primary) config.yaml intact" "docker exec '$MP_C' test -f /opt/data/config.yaml"
 
-# Gateway stability in multiplex mode — currently a KNOWN BLOCKER, so WARN (do
-# NOT fail the build; single-agent must keep shipping). Upstream Hermes
-# force-enables api_server for EVERY profile when API_SERVER_KEY is present in
-# the container env (gateway/config.py `_apply_env_overrides`, ~L1559), and the
-# multiplexer then rejects any secondary profile that "enables" a port-binding
-# platform → the gateway exits ~18s in. Stripping api_server from the
-# co-resident config (perkos-render-profiles.py) is necessary but NOT sufficient
-# while API_SERVER_KEY is global (the profile .env is a secret-scope dict, not
-# os.environ, so it can't suppress the force-enable). Fix candidate: give the
-# DEFAULT profile the key inline in config + stop setting API_SERVER_KEY globally,
-# so secondaries aren't force-enabled. Tracked in PHASE-1-MULTI-AGENT-DESIGN.md.
-# Multi-agent isn't wired end-to-end yet (no bridge/caller), so this only warns.
-sleep 12
-mp_state=$(docker inspect "$MP_C" --format '{{.State.Status}}' 2>/dev/null || echo missing)
-mp_restarts=$(docker inspect "$MP_C" --format '{{.RestartCount}}' 2>/dev/null || echo 0)
-if [ "$mp_state" = "running" ] && [ "$mp_restarts" -eq 0 ]; then
-  pass "multi-agent: gateway stable in multiplex mode (state=$mp_state restarts=$mp_restarts)"
-else
-  echo "  ⚠️  multi-agent: gateway NOT stable in multiplex mode (state=$mp_state restarts=$mp_restarts) — KNOWN BLOCKER (api_server env force-enable), non-fatal"
-  docker logs "$MP_C" 2>&1 | tail -12 | sed 's/^/  /' || true
-fi
+# Gateway must boot AND stay up in multiplex mode — HARD (green in CI once the
+# api_server blocker was fixed: the default profile owns the shared listener via
+# an inline key, and co-residents aren't force-enabled since the multi-agent
+# entrypoint block unsets API_SERVER_KEY/ENABLED — see #29 + hermes.template.yaml
+# + docker-entrypoint.sh). A regression that crashes multiplex boot now fails the
+# build. 30s exit/restart watch (mirrors the single-agent guard; non-flaky and
+# past the ~18s point where the old blocker surfaced).
+mp_deadline=$(( $(date +%s) + 30 ))
+mp_state=running
+mp_restarts=0
+while [ "$(date +%s)" -lt "$mp_deadline" ]; do
+  mp_state=$(docker inspect "$MP_C" --format '{{.State.Status}}' 2>/dev/null || echo missing)
+  mp_restarts=$(docker inspect "$MP_C" --format '{{.RestartCount}}' 2>/dev/null || echo 0)
+  [ "$mp_state" = "exited" ] && mp_fail "multi-agent: container exited in multiplex mode (restarts=$mp_restarts)"
+  [ "$mp_restarts" -gt 0 ] && mp_fail "multi-agent: container restarted in multiplex mode (restarts=$mp_restarts)"
+  sleep 3
+done
+pass "multi-agent: gateway stable in multiplex mode (state=$mp_state restarts=$mp_restarts)"
 docker rm -f "$MP_C" >/dev/null 2>&1 || true
 
 echo ""
