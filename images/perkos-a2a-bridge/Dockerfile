@@ -22,9 +22,11 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
-# 0.12.12 adds the farcaster.inbound bridge handler (forwards Neynar casts,
-# tunneled via the chat relay, to the local Farcaster adapter).
-ARG PERKOS_A2A_VERSION=0.12.12
+# 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
+# (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
+# though the Hermes api_server platform isn't multiplex-aware. Supersedes the
+# hand-built v0.12.13-perkos.*.mafix2 image the API .env was pinned to.
+ARG PERKOS_A2A_VERSION=0.12.13
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
