@@ -47,9 +47,11 @@ COPY config/hermes.template.yaml /opt/perkos/hermes.template.yaml
 COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
 COPY snapshot.sh /usr/local/bin/perkos-snapshot.sh
 COPY restore.sh /usr/local/bin/perkos-restore.sh
+COPY perkos-render-profiles.py /usr/local/bin/perkos-render-profiles.py
 RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh \
               /usr/local/bin/perkos-snapshot.sh \
-              /usr/local/bin/perkos-restore.sh
+              /usr/local/bin/perkos-restore.sh \
+              /usr/local/bin/perkos-render-profiles.py
 
 # PerkOS Assistant content — SOUL (persona) + runbook (FAQ knowledge).
 # Used only when the container is provisioned as the platform identity
