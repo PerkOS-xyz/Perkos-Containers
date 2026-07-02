@@ -38,6 +38,16 @@ env:
   HERMES_REPO: nousresearch/hermes-agent
   OPENCLAW_TAG: latest
   HERMES_TAG: latest
+  # PIN (2026-07-01): upstream hermes `latest` (sha256:f8cb504b…) is mid-refactor
+  # on multiplexing ("Workstream A"): the fail-closed get_secret guard landed but
+  # the api_server per-turn profile scope did NOT, so EVERY /v1/responses turn in
+  # multiplex mode 500s ("get_secret('OPENROUTER_BASE_URL') called with no
+  # profile secret scope active") — ALL multi-agent chat breaks, host included.
+  # Found live 2026-07-01 on the d2bdf31/4273c9c builds. This digest is the last
+  # known-good upstream (multi-agent persona e2e PASSED on it; OCI index,
+  # arm64+amd64). Clear it to float `latest` again once upstream lands the
+  # api_server scope work — verify with the PHASE-1 playbook probe first.
+  HERMES_PIN_DIGEST: sha256:4e809687be6438b7fddbaa089667c2c5856f82f6e7acab255be57a039c583922
   # @perkos/perkos-a2a@0.12.7 — 0.12.0 added the A2A_HERMES_AUTO_REPLY flag
   # but the multi-agent reply loop only works from 0.12.5+ (0.12.5 task_response
   # carries the real runtime text, 0.12.6 raises the local-task wait 45s→240s,
@@ -193,8 +203,15 @@ jobs:
         id: upstream
         run: |
           REPO="${HERMES_REPO}"
-          DIGEST="$(docker buildx imagetools inspect "${REPO}:${HERMES_TAG}" \
-            --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          # HERMES_PIN_DIGEST short-circuits the tag→digest resolve (see the env
+          # block comment: upstream `latest` currently breaks multi-agent chat).
+          if [ -n "${HERMES_PIN_DIGEST:-}" ]; then
+            DIGEST="${HERMES_PIN_DIGEST}"
+            echo "Using PINNED upstream digest ${DIGEST} (HERMES_PIN_DIGEST)"
+          else
+            DIGEST="$(docker buildx imagetools inspect "${REPO}:${HERMES_TAG}" \
+              --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          fi
           if [ -z "$DIGEST" ]; then echo "could not resolve digest"; exit 1; fi
           VERSION="$(docker buildx imagetools inspect "${REPO}@${DIGEST}" \
             --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}' \
