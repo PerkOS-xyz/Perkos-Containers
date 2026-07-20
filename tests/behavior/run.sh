@@ -153,8 +153,12 @@ add_check "bridge-warmup" true ""
 # the agent is connected, sends a proper A2A message, and returns the
 # correlated task_response. Asserts a substantive (non-empty, >=20 char) reply
 # to two canonical prompts — catching a runtime that connects but answers empty
-# (the "(empty reply from <runtime>)" sentinel is treated as empty). Generous
-# window for a fresh agent's relay-join latency (Hermes ~2-3 min boot).
+# (the "(empty reply from <runtime>)" sentinel is treated as empty). The complex
+# PM prompt can legitimately take just over 150s on a cold OpenClaw session, so
+# keep the response budget below the API's 300s cap but above that observed
+# latency. Relay discovery is already gated by bridgeConnected above.
+PROBE_TIMEOUT_MS=210000
+PROBE_CURL_MAX_SECONDS=220
 PROMPTS=(
   "Reply with a one-sentence confirmation that you are online and ready."
   "You are the PM. Break the goal 'ship a landing page' into 3 delegated tasks with owners. Be concrete."
@@ -162,10 +166,11 @@ PROMPTS=(
 NAMES=("basic-reply" "${RUNTIME_LC}-non-empty-reply")
 ALL_OK=true
 for i in "${!PROMPTS[@]}"; do
-  RES="$(curl -sS --max-time 160 -X POST "${API}/internal/runtimes/probe-agent" \
+  RES="$(curl -sS --max-time "$PROBE_CURL_MAX_SECONDS" -X POST "${API}/internal/runtimes/probe-agent" \
     -H "x-runtime-ingest-key: ${RUNTIME_INGEST_KEY}" -H "content-type: application/json" \
     --data "$(jq -nc --arg a "$NAME" --arg p "${PROMPTS[$i]}" \
-      '{agentName:$a, prompt:$p, timeoutMs:150000}')" 2>/dev/null || echo '{}')"
+      --argjson timeout "$PROBE_TIMEOUT_MS" \
+      '{agentName:$a, prompt:$p, timeoutMs:$timeout}')" 2>/dev/null || echo '{}')"
   REPLY="$(jq -r '.reply // ""' <<<"$RES")"
   if [ "$(jq -r '.ok // false' <<<"$RES")" = "true" ] && [ "${#REPLY}" -ge 20 ]; then
     add_check "${NAMES[$i]}" true "reply len=${#REPLY}"
