@@ -55,7 +55,7 @@ env:
   # 0.12.0 regressed chat→"No response from OpenClaw" and A2A→queued-artifact
   # with tools not firing. Keep in lockstep with the bridge Dockerfile default
   # and deploy/perkos-assistant/docker-compose.yml — bump all three together.
-  PERKOS_A2A_VERSION: 0.12.17
+  PERKOS_A2A_VERSION: 0.12.19
   # Where to register the freshly-pushed image (BETA channel) + later post
   # behavior-test results. PERKOS_API_URL is a repo variable; the shared
   # secret is RUNTIME_INGEST_KEY.
