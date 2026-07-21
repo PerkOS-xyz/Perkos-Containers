@@ -22,6 +22,7 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
+# 0.12.20 carries trusted MiniPay board context through shared fleet dispatch.
 # 0.12.19 carries canonical project IDs and isolates OpenClaw chat sessions.
 # 0.12.14 skips the Hermes/LLM turn for wallet-less auto-reply frames
 # (agent-to-agent channel chatter that can never be routed a chat_reply) —
@@ -29,7 +30,7 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.19
+ARG PERKOS_A2A_VERSION=0.12.20
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
