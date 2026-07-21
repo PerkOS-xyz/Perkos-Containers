@@ -8,10 +8,8 @@
 #
 # We assert against the *current* OpenClaw config schema
 # (agents.defaults.model.primary, gateway.auth.token,
-# models.providers.ollama.*). The template has no channel-plugin block
-# anymore, so there are no telegram/slack/discord assertions — channel
-# secrets are still checked for env pass-through since the upstream
-# plugins read them directly from the process env.
+# models.providers.ollama.*). Telegram is asserted through the native
+# channels.telegram config contract; its token remains an env SecretRef.
 #
 # Usage:
 #   ./tests/openclaw/smoke.sh perkos-openclaw:test
@@ -178,7 +176,10 @@ fi
 # plugins read these directly; the entrypoint must not strip them.
 # ---------------------------------------------------------------
 if run_container perkos-openclaw-smoke-env-$$ \
+    -e TELEGRAM_ENABLED=true \
     -e TELEGRAM_BOT_TOKEN=fake-tg-token \
+    -e TELEGRAM_ALLOWED_USERS="123, 456" \
+    -e TELEGRAM_HOME_CHANNEL=-100987 \
     -e SLACK_BOT_TOKEN=fake-slack-token; then
   if docker exec "$CONTAINER" sh -c 'test "$TELEGRAM_BOT_TOKEN" = fake-tg-token'; then
     pass "env: TELEGRAM_BOT_TOKEN propagated to process env"
@@ -190,6 +191,10 @@ if run_container perkos-openclaw-smoke-env-$$ \
   else
     fail "env: SLACK_BOT_TOKEN missing from container env"
   fi
+  jqok "telegram: native channel enabled" '.channels.telegram.enabled == true'
+  jqok "telegram: token uses env SecretRef" '.channels.telegram.botToken.id == "TELEGRAM_BOT_TOKEN"'
+  jqok "telegram: numeric allowlist rendered" '.channels.telegram.allowFrom == ["123", "456"]'
+  jqok "telegram: default target rendered" '.channels.telegram.defaultTo == "-100987"'
 fi
 
 # ---------------------------------------------------------------

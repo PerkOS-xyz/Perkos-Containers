@@ -60,6 +60,8 @@ truthy() {
 }
 
 TELEGRAM_PLUGIN_ENABLED=$(truthy "${TELEGRAM_ENABLED:-}")
+TELEGRAM_ALLOWED_USERS="${TELEGRAM_ALLOWED_USERS:-}"
+TELEGRAM_HOME_CHANNEL="${TELEGRAM_HOME_CHANNEL:-}"
 SLACK_PLUGIN_ENABLED=$(truthy "${SLACK_ENABLED:-}")
 DISCORD_PLUGIN_ENABLED=$(truthy "${DISCORD_ENABLED:-}")
 # OpenClaw's bundled workboard (local kanban + agent tools): the agent's
@@ -122,6 +124,8 @@ jq \
   --arg llm_provider "$LLM_PROVIDER" \
   --arg gateway_key "$PERKOS_GATEWAY_API_KEY" \
   --arg telegram_plugin_enabled "$TELEGRAM_PLUGIN_ENABLED" \
+  --arg telegram_allowed_users "$TELEGRAM_ALLOWED_USERS" \
+  --arg telegram_home_channel "$TELEGRAM_HOME_CHANNEL" \
   --arg slack_plugin_enabled    "$SLACK_PLUGIN_ENABLED" \
   --arg discord_plugin_enabled  "$DISCORD_PLUGIN_ENABLED" \
   --arg workboard_enabled       "$WORKBOARD_PLUGIN_ENABLED" \
@@ -143,6 +147,29 @@ jq \
   # "<provider>/<model>" primary above.
   | if $llm_provider != "ollama"
     then .models.providers |= (with_entries(.key = $llm_provider))
+    else . end
+  # Telegram is a native OpenClaw channel plugin, configured under
+  # channels.telegram (not plugins.entries). The bot token remains in the
+  # process environment and is referenced by name so it is never written to
+  # openclaw.json. An explicit allowlist switches the safe default from pairing
+  # to allowlist mode.
+  | if $telegram_plugin_enabled == "true"
+    then .channels.telegram = {
+      enabled: true,
+      botToken: { source: "env", provider: "default", id: "TELEGRAM_BOT_TOKEN" },
+      dmPolicy: (if ($telegram_allowed_users | length) > 0 then "allowlist" else "pairing" end)
+    }
+    | if ($telegram_allowed_users | length) > 0
+      then .channels.telegram.allowFrom = (
+        $telegram_allowed_users
+        | split(",")
+        | map(gsub("^\\s+|\\s+$"; ""))
+        | map(select(length > 0))
+      )
+      else . end
+    | if ($telegram_home_channel | length) > 0
+      then .channels.telegram.defaultTo = $telegram_home_channel
+      else . end
     else . end
   # Workboard plugin (opt-in): the standard plugin entry shape — see
   # openclaw docs/plugins/workboard.md.
