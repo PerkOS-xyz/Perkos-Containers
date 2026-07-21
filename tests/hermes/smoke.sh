@@ -235,6 +235,24 @@ else
   fail "config.yaml missing inline 'api_key:' binding (BYOK 401 regression — see hermes.template.yaml model.api_key)"
 fi
 
+if echo "$config" | grep -q "max_turns: 30"; then
+  pass "config.yaml bounds each agent request to 30 turns by default"
+else
+  fail "config.yaml missing the default max_turns safety budget"
+fi
+
+if echo "$config" | grep -A8 '^    telegram:' | grep -q "interim_assistant_messages: false"; then
+  pass "telegram suppresses permanent interim assistant messages"
+else
+  fail "telegram must suppress interim assistant messages to avoid progress spam"
+fi
+
+if echo "$config" | grep -A8 '^    telegram:' | grep -q "streaming: false"; then
+  pass "telegram emits a final response instead of token-stream bubbles"
+else
+  fail "telegram streaming must be disabled for stable conversational delivery"
+fi
+
 # --- Open-source skills install (PERKOS_AGENT_SKILLS_B64) ---
 # Boot a second container with a skills payload: one allow-listed entry
 # (real SHA-pinned ethskills SKILL.md) + one non-allow-listed host. Assert
