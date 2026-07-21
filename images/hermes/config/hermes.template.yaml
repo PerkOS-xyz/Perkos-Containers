@@ -118,8 +118,6 @@ platforms:
       key: ${API_SERVER_KEY}
   telegram:
     enabled: ${TELEGRAM_ENABLED}
-    token_env: TELEGRAM_BOT_TOKEN
-    webhook_url: ${TELEGRAM_WEBHOOK_URL}
   slack:
     # Hermes-bundled Slack adapter. We don't ship a custom platform
     # plugin for Slack (unlike Farcaster) because the upstream
