@@ -7,6 +7,20 @@ captures *what shipped* and the *why* — the equivalent of a good commit body,
 collected here so operators don't have to spelunk `git log`. Tag-style
 versions are optional; date-stamped sections are fine for in-flight work.
 
+## 2026-07-21
+
+### Hermes messaging loop protection
+
+Telegram now delivers only the final assistant response: token streaming,
+tool-progress bubbles, and interim assistant commentary are disabled for that
+surface, while long-running heartbeat notifications remain enabled. Hermes
+agent requests also receive a configurable `PERKOS_AGENT_MAX_TURNS` budget
+(default `30`, validated as a positive integer) instead of inheriting the
+upstream 90-turn default. This bounds malformed provider/tool combinations and
+prevents permanent Telegram progress-message spam. The guard was added after
+an invalid nested OpenClaw → Hermes-agent provider test retried missing Hermes
+tools hundreds of times from one inbound Telegram message.
+
 ## 2026-06-21
 
 ### Skill id rename: `perkos-tech` → `perkos-knowledge` (both runtimes)

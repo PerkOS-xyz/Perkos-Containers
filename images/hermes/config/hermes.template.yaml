@@ -69,6 +69,24 @@ mcp_servers:
 agent:
   id: ${PERKOS_AGENT_ID}
   name: ${PERKOS_AGENT_NAME}
+  # Bound the number of model/tool turns in one inbound request. Hermes
+  # defaults to 90, which is too permissive for messaging channels: a bad
+  # provider/tool pairing can otherwise keep a Telegram conversation active
+  # for close to an hour. Operators can raise this for long-running workers.
+  max_turns: ${PERKOS_AGENT_MAX_TURNS}
+
+# Messaging surfaces should deliver a conversational answer, not every
+# mid-turn planning sentence. Telegram has permanent bubbles, so interim
+# assistant commentary and token streaming are disabled while the final answer
+# and long-running heartbeat remain available.
+display:
+  platforms:
+    telegram:
+      tool_progress: off
+      interim_assistant_messages: false
+      busy_ack_detail: false
+      streaming: false
+      long_running_notifications: true
 
 # Standalone tool plugins staged into $HERMES_HOME/plugins/ by the entrypoint.
 # Hermes gates user/standalone plugins behind this allow-list (unset = none),
