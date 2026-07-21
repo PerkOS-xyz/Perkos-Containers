@@ -71,6 +71,22 @@ API_SERVER_ENABLED=$(truthy "${API_SERVER_ENABLED:-true}")
 API_SERVER_HOST="${API_SERVER_HOST:-0.0.0.0}"
 API_SERVER_PORT="${API_SERVER_PORT:-8642}"
 
+# A channel request must have a finite tool/model budget. Upstream Hermes uses
+# 90 turns by default; 30 is ample for interactive work and prevents malformed
+# provider/tool combinations from looping for an hour. Keep it configurable
+# for autonomous workers that intentionally need a larger budget.
+PERKOS_AGENT_MAX_TURNS="${PERKOS_AGENT_MAX_TURNS:-30}"
+case "$PERKOS_AGENT_MAX_TURNS" in
+  ''|*[!0-9]*)
+    echo "perkos-entrypoint: PERKOS_AGENT_MAX_TURNS must be a positive integer" >&2
+    exit 2
+    ;;
+esac
+if [ "$PERKOS_AGENT_MAX_TURNS" -lt 1 ]; then
+  echo "perkos-entrypoint: PERKOS_AGENT_MAX_TURNS must be at least 1" >&2
+  exit 2
+fi
+
 # Messaging gateways default OFF — a wallet enables them via the
 # /agents/new wizard which sets *_ENABLED via ecsProvision.
 TELEGRAM_ENABLED=$(truthy "${TELEGRAM_ENABLED:-}")
@@ -80,7 +96,7 @@ SLACK_ENABLED=$(truthy "${SLACK_ENABLED:-}")
 SLACK_CHANNEL_ID="${SLACK_CHANNEL_ID:-}"
 FARCASTER_ENABLED=$(truthy "${FARCASTER_ENABLED:-}")
 
-export API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT
+export API_SERVER_ENABLED API_SERVER_HOST API_SERVER_PORT PERKOS_AGENT_MAX_TURNS
 export TELEGRAM_ENABLED TELEGRAM_ALLOWED_USERS TELEGRAM_HOME_CHANNEL
 export SLACK_ENABLED SLACK_CHANNEL_ID
 export FARCASTER_ENABLED
