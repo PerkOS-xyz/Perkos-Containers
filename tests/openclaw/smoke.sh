@@ -34,6 +34,14 @@ fail() {
 }
 pass() { echo "OK: $1"; }
 
+imageok() {
+  if eval "$2" >/dev/null 2>&1; then
+    pass "$1"
+  else
+    fail "$1"
+  fi
+}
+
 CONTAINER=""
 cleanup() {
   if [ -n "$CONTAINER" ]; then
@@ -41,6 +49,14 @@ cleanup() {
   fi
 }
 trap cleanup EXIT
+
+# The rendered gateway and the ECS provisioner both use port 3000. Keep the
+# image metadata and healthcheck on that same port or Docker/ECS will replace a
+# functioning OpenClaw task as unhealthy.
+imageok "image: exposes OpenClaw gateway port 3000" \
+  "docker image inspect '$IMAGE' --format '{{json .Config.ExposedPorts}}' | jq -e 'has(\"3000/tcp\")'"
+imageok "image: healthcheck probes OpenClaw gateway port 3000" \
+  "docker image inspect '$IMAGE' --format '{{json .Config.Healthcheck.Test}}' | jq -e 'join(\" \") | contains(\"127.0.0.1:3000/healthz\")'"
 
 run_container() {
   # Args: name + extra -e env args.
