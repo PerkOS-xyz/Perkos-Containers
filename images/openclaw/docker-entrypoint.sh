@@ -258,6 +258,36 @@ echo "perkos-entrypoint: checking for hibernation snapshot..."
 /usr/local/bin/perkos-restore.sh || \
   echo "perkos-entrypoint: restore failed (continuing with fresh state)"
 
+# Managed channel behavior. Install AFTER snapshot restore and co-resident
+# rendering so stale snapshots cannot remove it and every agent workspace gets
+# the same latency/UX guardrails. The marked block is replaced atomically on
+# each boot, preserving the user's persona and any instructions around it.
+install_perkos_chat_policy() {
+  _workspace="$1"
+  _agents="$_workspace/AGENTS.md"
+  _tmp="$_workspace/.AGENTS.md.perkos.$$"
+  mkdir -p "$_workspace"
+  if [ -f "$_agents" ]; then
+    awk '
+      /^<!-- PERKOS_MANAGED_CHAT_POLICY_START -->$/ { skip=1; next }
+      /^<!-- PERKOS_MANAGED_CHAT_POLICY_END -->$/   { skip=0; next }
+      !skip { print }
+    ' "$_agents" > "$_tmp"
+  else
+    : > "$_tmp"
+  fi
+  printf '\n' >> "$_tmp"
+  cat /opt/perkos/perkos-chat-policy.md >> "$_tmp"
+  mv "$_tmp" "$_agents"
+  chmod 644 "$_agents"
+}
+
+for _workspace in "$CONFIG_DIR"/workspace*; do
+  [ -d "$_workspace" ] || continue
+  install_perkos_chat_policy "$_workspace"
+done
+echo "perkos-entrypoint: managed chat policy installed in agent workspaces"
+
 # Open-source skills (PerkOS skill packs the wallet selected in the wizard).
 #
 # The provisioner base64's a JSON list of { name, url } into

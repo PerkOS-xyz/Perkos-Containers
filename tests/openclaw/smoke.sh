@@ -115,11 +115,17 @@ if run_container perkos-openclaw-smoke-baseline-$$; then
   jqok "baseline: no unsubstituted __PLACEHOLDER__ left" \
        '[.. | strings | select(startswith("__") and endswith("__"))] | length == 0'
 
-  # Persona must NOT be written when the env var is absent.
-  if docker exec "$CONTAINER" test -f "$AGENTS_MD" 2>/dev/null; then
-    fail "baseline: AGENTS.md should NOT exist without PERKOS_AGENT_SOUL_B64"
+  # Even without a custom persona, the managed channel policy is installed as
+  # standing instructions so simple messaging queries stay on the fast path.
+  waited=0
+  while [ "$waited" -lt 10 ]; do
+    docker exec "$CONTAINER" sh -c "grep -q PERKOS_MANAGED_CHAT_POLICY_START $AGENTS_MD" 2>/dev/null && break
+    sleep 1; waited=$((waited + 1))
+  done
+  if docker exec "$CONTAINER" sh -c "grep -q PERKOS_MANAGED_CHAT_POLICY_START $AGENTS_MD" 2>/dev/null; then
+    pass "baseline: managed chat policy installed without a custom persona"
   else
-    pass "baseline: no AGENTS.md without persona env (correct)"
+    fail "baseline: managed chat policy missing from AGENTS.md"
   fi
 
   # Hibernation snapshot/restore: scripts baked + executable, AWS CLI present,
@@ -168,6 +174,11 @@ if run_container perkos-openclaw-smoke-soul-$$ -e PERKOS_AGENT_SOUL_B64="$SOUL_B
     pass "soul: AGENTS.md content decoded correctly"
   else
     fail "soul: AGENTS.md content marker not found (bad base64 decode?)"
+  fi
+  if [ "$(docker exec "$CONTAINER" grep -c PERKOS_MANAGED_CHAT_POLICY_START "$AGENTS_MD" 2>/dev/null)" = "1" ]; then
+    pass "soul: managed chat policy appended exactly once"
+  else
+    fail "soul: managed chat policy missing or duplicated"
   fi
 fi
 
@@ -284,6 +295,9 @@ if run_container perkos-openclaw-smoke-multiagent-$$ \
   if docker exec "$CONTAINER" test -f /home/node/.openclaw/workspace-bookkeeper/AGENTS.md 2>/dev/null; then
     pass "multi-agent: bookkeeper AGENTS.md written to its workspace"
   else fail "multi-agent: bookkeeper AGENTS.md missing"; fi
+  if docker exec "$CONTAINER" sh -c "grep -q PERKOS_MANAGED_CHAT_POLICY_START /home/node/.openclaw/workspace-researcher/AGENTS.md && grep -q PERKOS_MANAGED_CHAT_POLICY_START /home/node/.openclaw/workspace-bookkeeper/AGENTS.md" 2>/dev/null; then
+    pass "multi-agent: managed chat policy installed for co-resident agents"
+  else fail "multi-agent: managed chat policy missing from co-resident AGENTS.md"; fi
   # Per-renter key isolation (Phase 2): scout has its OWN provider + model ref.
   if docker exec "$CONTAINER" sh -c "jq -e '.models.providers[\"perkos-scout\"].apiKey == \"pllm-scout-own-key\"' $CFG" >/dev/null 2>&1; then
     pass "multi-agent: scout has own-key provider perkos-scout with its key"

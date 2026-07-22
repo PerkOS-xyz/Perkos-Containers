@@ -241,6 +241,12 @@ else
   fail "config.yaml missing the default max_turns safety budget"
 fi
 
+if echo "$config" | grep -q "PerkOS managed-channel policy"; then
+  pass "config.yaml includes the fast-response policy"
+else
+  fail "config.yaml missing the PerkOS fast-response policy"
+fi
+
 if echo "$config" | grep -A8 '^    telegram:' | grep -q "interim_assistant_messages: false"; then
   pass "telegram suppresses permanent interim assistant messages"
 else
@@ -251,6 +257,12 @@ if echo "$config" | grep -A8 '^    telegram:' | grep -q "streaming: false"; then
   pass "telegram emits a final response instead of token-stream bubbles"
 else
   fail "telegram streaming must be disabled for stable conversational delivery"
+fi
+
+if echo "$config" | grep -A8 '^  telegram:' | grep -q "gateway_restart_notification: false"; then
+  pass "telegram suppresses misleading lifecycle shutdown broadcasts"
+else
+  fail "telegram must suppress lifecycle shutdown broadcasts"
 fi
 
 # --- Open-source skills install (PERKOS_AGENT_SKILLS_B64) ---
