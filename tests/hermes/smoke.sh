@@ -247,6 +247,21 @@ else
   fail "config.yaml missing the PerkOS fast-response policy"
 fi
 
+if docker exec "$CONTAINER" sh -lc \
+    'test "$PERKOS_DISABLE_FIRST_MESSAGE_ONBOARDING" = true'; then
+  pass "managed agents disable upstream first-message onboarding by default"
+else
+  fail "managed first-message onboarding flag is not enabled"
+fi
+
+if docker exec "$CONTAINER" grep -q \
+    'not _perkos_env_flag_disabled("PERKOS_DISABLE_FIRST_MESSAGE_ONBOARDING")' \
+    /opt/hermes/gateway/run.py; then
+  pass "gateway source honors the managed first-message flag"
+else
+  fail "managed first-message runtime guard is missing"
+fi
+
 if echo "$config" | grep -A8 '^    telegram:' | grep -q "interim_assistant_messages: false"; then
   pass "telegram suppresses permanent interim assistant messages"
 else

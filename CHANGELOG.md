@@ -9,6 +9,16 @@ versions are optional; date-stamped sections are fine for in-flight work.
 
 ## 2026-07-22
 
+### Managed Hermes first-message behavior
+
+PerkOS-managed Hermes agents now skip the upstream first-contact introduction
+and profile-building offer by default. A user's first channel message is
+answered directly, so requests such as “give me a short description” are not
+expanded with `/help` instructions or an unrelated profile prompt. The behavior
+is isolated behind `PERKOS_DISABLE_FIRST_MESSAGE_ONBOARDING=true` and can be
+overridden for self-hosted deployments. The image build applies a narrow,
+fail-fast runtime patch and stops if its upstream anchor changes.
+
 ### OpenClaw container healthcheck port alignment
 
 The OpenClaw image now exposes and probes port `3000`, matching the rendered
