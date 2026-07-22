@@ -9,6 +9,14 @@ versions are optional; date-stamped sections are fine for in-flight work.
 
 ## 2026-07-22
 
+### OpenClaw container healthcheck port alignment
+
+The OpenClaw image now exposes and probes port `3000`, matching the rendered
+gateway configuration, ECS provisioner, and A2A bridge target. The previous
+upstream-default `18789` probe marked a working gateway unhealthy and could
+cause needless ECS task replacement. The OpenClaw smoke suite now asserts both
+the exposed port and healthcheck target.
+
 ### Fast conversational path for managed channels
 
 Hermes and OpenClaw agents now receive a stable PerkOS-managed instruction to

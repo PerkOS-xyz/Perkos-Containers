@@ -72,10 +72,10 @@ ENV PERKOS_LLM_BASE_URL=https://api.llm.perkos.xyz \
     PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud \
     OPENCLAW_CONFIG_PATH=/home/node/.openclaw/openclaw.json
 
-EXPOSE 18789
+EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+  CMD node -e "fetch('http://127.0.0.1:3000/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
 ENTRYPOINT ["tini", "-s", "--", "perkos-entrypoint.sh"]
 CMD ["node", "openclaw.mjs", "gateway", "--bind", "lan"]
