@@ -41,6 +41,7 @@ RUN apt-get update && \
 # Baseline config — templated by docker-entrypoint.sh at boot. Values
 # wrapped in __ENV_VAR__ get replaced from container env.
 COPY --chown=node:node config/openclaw.template.json /opt/perkos/openclaw.template.json
+COPY --chown=node:node perkos-chat-policy.md /opt/perkos/perkos-chat-policy.md
 # Bundled PerkOS skills (e.g. perkos-platform-tools). Baked under
 # /opt/perkos-skills/ and copied into the agent's workspace skills dir at
 # boot by the entrypoint, where OpenClaw auto-discovers them.

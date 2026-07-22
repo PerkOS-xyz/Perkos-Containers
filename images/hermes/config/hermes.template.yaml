@@ -74,6 +74,19 @@ agent:
   # provider/tool pairing can otherwise keep a Telegram conversation active
   # for close to an hour. Operators can raise this for long-running workers.
   max_turns: ${PERKOS_AGENT_MAX_TURNS}
+  # PerkOS agents serve both interactive chat and autonomous project work.
+  # Keep the full tool budget for real tasks, but steer simple chat away from
+  # unnecessary research/tool loops. This is part of Hermes' stable cached
+  # system prompt (not a per-turn injection), so it preserves prompt caching.
+  environment_hint: |-
+    PerkOS managed-channel policy: For simple definitions, greetings, rewrites,
+    summaries, or questions answerable from the conversation or your existing
+    knowledge, answer directly in one model response without tools. If the user
+    asks for a short or brief answer, keep it to a few sentences. Use tools only
+    when the user requests an action, verification, current information,
+    sources, or when correctness materially depends on retrieving missing
+    information. Do not announce that you will research unless research is
+    actually necessary.
 
 # Messaging surfaces should deliver a conversational answer, not every
 # mid-turn planning sentence. Telegram has permanent bubbles, so interim
@@ -136,6 +149,11 @@ platforms:
       key: ${API_SERVER_KEY}
   telegram:
     enabled: ${TELEGRAM_ENABLED}
+    # ECS replacements and completed test teardown are routine lifecycle
+    # events, not user task failures. Active work is recovered by PerkOS state;
+    # suppress the upstream home-channel broadcast that otherwise claims an
+    # already-completed task "will be interrupted".
+    gateway_restart_notification: false
   slack:
     # Hermes-bundled Slack adapter. We don't ship a custom platform
     # plugin for Slack (unlike Farcaster) because the upstream
@@ -145,8 +163,10 @@ platforms:
     bot_token_env: SLACK_BOT_TOKEN
     signing_secret_env: SLACK_SIGNING_SECRET
     channel_id: ${SLACK_CHANNEL_ID}
+    gateway_restart_notification: false
   farcaster:
     enabled: ${FARCASTER_ENABLED}
     api_key_env: FARCASTER_NEYNAR_API_KEY
     signer_uuid_env: FARCASTER_SIGNER_UUID
     fid_env: FARCASTER_FID
+    gateway_restart_notification: false

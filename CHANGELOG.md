@@ -7,6 +7,26 @@ captures *what shipped* and the *why* — the equivalent of a good commit body,
 collected here so operators don't have to spelunk `git log`. Tag-style
 versions are optional; date-stamped sections are fine for in-flight work.
 
+## 2026-07-22
+
+### Fast conversational path for managed channels
+
+Hermes and OpenClaw agents now receive a stable PerkOS-managed instruction to
+answer simple definitions, greetings, rewrites, summaries, and explicitly brief
+questions directly without launching unnecessary research or tool loops. Tools
+remain available for actions, verification, current information, requested
+sources, and genuinely missing context, so autonomous project work keeps its
+full capability and turn budget.
+
+Hermes also suppresses upstream lifecycle broadcasts on Telegram, Slack, and
+Farcaster. Routine ECS replacement or test teardown no longer posts the
+misleading “Your current task will be interrupted” warning after a completed
+turn. Telegram retains its native typing indicator while permanent interim,
+tool-progress, and streaming messages remain disabled. OpenClaw installs the
+same marked policy block into every primary and co-resident `AGENTS.md` after
+snapshot restoration, replacing the managed block idempotently without
+overwriting user personas.
+
 ## 2026-07-21
 
 ### Hermes messaging loop protection
