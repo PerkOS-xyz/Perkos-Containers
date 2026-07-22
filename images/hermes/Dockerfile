@@ -44,6 +44,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 COPY config/hermes.template.yaml /opt/perkos/hermes.template.yaml
+COPY patch-managed-runtime.py /opt/perkos/patch-managed-runtime.py
 COPY docker-entrypoint.sh /usr/local/bin/perkos-entrypoint.sh
 COPY snapshot.sh /usr/local/bin/perkos-snapshot.sh
 COPY restore.sh /usr/local/bin/perkos-restore.sh
@@ -51,7 +52,9 @@ COPY perkos-render-profiles.py /usr/local/bin/perkos-render-profiles.py
 RUN chmod 755 /usr/local/bin/perkos-entrypoint.sh \
               /usr/local/bin/perkos-snapshot.sh \
               /usr/local/bin/perkos-restore.sh \
-              /usr/local/bin/perkos-render-profiles.py
+              /usr/local/bin/perkos-render-profiles.py && \
+    python3 /opt/perkos/patch-managed-runtime.py && \
+    python3 -m py_compile /opt/hermes/gateway/run.py
 
 # PerkOS Assistant content — SOUL (persona) + runbook (FAQ knowledge).
 # Used only when the container is provisioned as the platform identity
@@ -101,7 +104,8 @@ ENV PATH="/opt/hermes/.venv/bin:${PATH}"
 
 # Defaults — overridable at runtime via -e.
 ENV PERKOS_LLM_BASE_URL=https://api.llm.perkos.xyz/v1 \
-    PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud
+    PERKOS_LLM_DEFAULT_MODEL=kimi-k2.6:cloud \
+    PERKOS_DISABLE_FIRST_MESSAGE_ONBOARDING=true
 
 # Our entrypoint runs FIRST (renders config, copies skill + platform
 # plugin into HERMES_HOME), then forks upstream's docker/entrypoint.sh
