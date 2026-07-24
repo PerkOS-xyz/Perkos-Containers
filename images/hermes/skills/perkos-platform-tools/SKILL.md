@@ -98,6 +98,11 @@ When you are part of a project (the user or another agent gives you a
 `projectId`), you can drive its job board with the tools above:
 
 **If you are the PM / orchestrator (playbook):**
+0. The worker names supplied in the PerkOS project roster are authoritative
+   across runtimes. A worker may be Hermes, OpenClaw, or externally hosted and
+   does not need to exist in this container's local agent/subagent registry.
+   Never register, create, search for, or substitute a local worker. Assign the
+   exact project-roster name; PerkOS dispatches the task after approval.
 1. Break the goal into the SMALLEST useful tasks. For each, `createTask`
    with a clear `name` + `prompt` (state the deliverable and what "done"
    looks like), and set `agent` to the worker who should do it — only use
