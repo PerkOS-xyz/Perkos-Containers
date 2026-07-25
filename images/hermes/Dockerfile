@@ -31,6 +31,7 @@ FROM ${HERMES_REF}
 ARG HERMES_TAG=latest
 ARG HERMES_REF=nousresearch/hermes-agent:latest
 ARG HERMES_VERSION=
+ARG ONECLAW_MCP_VERSION=0.41.4
 
 USER root
 
@@ -42,6 +43,14 @@ RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       gettext-base ca-certificates awscli && \
     rm -rf /var/lib/apt/lists/*
+
+# Agent-scoped security controls exposed to Hermes as MCP tools. Pin and bake
+# the official package so agent wake-up never downloads mutable `latest` code
+# or depends on npm registry availability.
+RUN npm install --global --ignore-scripts "@1claw/mcp@${ONECLAW_MCP_VERSION}" && \
+    test "$(npm view "@1claw/mcp@${ONECLAW_MCP_VERSION}" dist.shasum)" = \
+      "7706169665446b520d3a938dc0e79ead91ecba6a" && \
+    command -v 1claw-mcp >/dev/null
 
 COPY config/hermes.template.yaml /opt/perkos/hermes.template.yaml
 COPY patch-managed-runtime.py /opt/perkos/patch-managed-runtime.py
@@ -90,6 +99,7 @@ LABEL org.opencontainers.image.title="PerkOS-Hermes" \
       org.opencontainers.image.description="Hermes agent + PerkOS LLM provider + Assistant content baked in" \
       org.opencontainers.image.source="https://github.com/PerkOS-xyz/Perkos-Containers" \
       perkos.runtime="hermes" \
+      perkos.oneclaw-mcp-version="${ONECLAW_MCP_VERSION}" \
       perkos.upstream-tag="${HERMES_TAG}" \
       perkos.upstream-ref="${HERMES_REF}" \
       perkos.upstream-version="${HERMES_VERSION}"

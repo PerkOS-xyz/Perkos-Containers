@@ -159,6 +159,42 @@ if [ -n "${PERKOS_DISABLED_TOOLS:-}" ]; then
   fi
 fi
 
+# Optional 1Claw MCP security rail. The agent-scoped ocv_ credential is
+# resolved server-side by PerkOS and injected only into this task. It is never
+# printed. The baked official @1claw/mcp process exchanges short-lived JWTs itself,
+# so Hermes does not persist an expiring bearer token.
+if [ -n "${ONECLAW_AGENT_API_KEY:-}" ]; then
+  require ONECLAW_AGENT_ID
+  require ONECLAW_VAULT_ID
+  case "$ONECLAW_AGENT_API_KEY" in
+    ocv_*) ;;
+    *)
+      echo "perkos-entrypoint: invalid ONECLAW_AGENT_API_KEY prefix" >&2
+      exit 2
+      ;;
+  esac
+  ONECLAW_API_BASE="${ONECLAW_API_BASE:-https://api.1claw.xyz}"
+  if [ "$ONECLAW_API_BASE" != "https://api.1claw.xyz" ]; then
+    echo "perkos-entrypoint: unsupported ONECLAW_API_BASE" >&2
+    exit 2
+  fi
+  _oneclaw_block=$(mktemp)
+  cat > "$_oneclaw_block" <<EOF
+  oneclaw:
+    command: 1claw-mcp
+    env:
+      ONECLAW_BASE_URL: ${ONECLAW_API_BASE}
+      ONECLAW_AGENT_API_KEY: ${ONECLAW_AGENT_API_KEY}
+      ONECLAW_AGENT_ID: ${ONECLAW_AGENT_ID}
+      ONECLAW_VAULT_ID: ${ONECLAW_VAULT_ID}
+    connect_timeout: 60
+    timeout: 120
+EOF
+  sed -i "/^mcp_servers:/r $_oneclaw_block" "$HERMES_HOME/config.yaml"
+  rm -f "$_oneclaw_block"
+  echo "perkos-entrypoint: 1Claw MCP security rail configured"
+fi
+
 # Stage our skill into the place Hermes scans. We baked it into
 # /opt/perkos-skills/ in the Dockerfile (under root) and copy it now into
 # HERMES_HOME/skills/ before upstream chowns the tree. Upstream's
@@ -283,7 +319,10 @@ from urllib.request import build_opener, HTTPRedirectHandler, Request
 # the server resolver (services/skillsCatalog.ts) and the OpenClaw entrypoint.
 ALLOWED_HOSTS = {"raw.githubusercontent.com"}
 MAX_BYTES = 256 * 1024
+MAX_BUNDLE_FILE_BYTES = 2 * 1024 * 1024
+MAX_BUNDLE_BYTES = 6 * 1024 * 1024
 NAME_RE = re.compile(r"[^a-z0-9-]+")
+PATH_PART_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 # Refuse to follow redirects — a 30x from an allow-listed host could otherwise
 # bounce us to an attacker host (the host check only sees the original URL).
@@ -342,8 +381,60 @@ for ent in entries[:40]:
         fd = os.open(dest_file, os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_TRUNC, 0o644)
         with os.fdopen(fd, "wb") as f:
             f.write(data)
+        bundle_bytes = len(data)
+        extra_files = ent.get("files", [])
+        if not isinstance(extra_files, list):
+            extra_files = []
+        for extra in extra_files[:32]:
+            if not isinstance(extra, dict):
+                continue
+            rel = str(extra.get("path", ""))
+            extra_url = str(extra.get("url", ""))
+            parts = rel.split("/")
+            if (
+                not rel
+                or rel.startswith("/")
+                or len(parts) > 6
+                or any(part in ("", ".", "..") or not PATH_PART_RE.fullmatch(part) for part in parts)
+            ):
+                print(f"perkos-entrypoint: skill '{name}' invalid bundle path — skipped")
+                continue
+            extra_parsed = urlparse(extra_url)
+            if extra_parsed.scheme != "https" or extra_parsed.hostname not in ALLOWED_HOSTS:
+                print(f"perkos-entrypoint: skill '{name}' bundle url host not allowed — skipped")
+                continue
+            extra_req = Request(extra_url, headers={"User-Agent": "perkos-entrypoint"})
+            with _opener.open(extra_req, timeout=20) as resp:
+                if getattr(resp, "status", 200) != 200:
+                    print(f"perkos-entrypoint: skill '{name}' bundle file non-200 — skipped")
+                    continue
+                extra_data = resp.read(MAX_BUNDLE_FILE_BYTES + 1)
+            if len(extra_data) > MAX_BUNDLE_FILE_BYTES:
+                print(f"perkos-entrypoint: skill '{name}' bundle file too large — skipped")
+                continue
+            if bundle_bytes + len(extra_data) > MAX_BUNDLE_BYTES:
+                print(f"perkos-entrypoint: skill '{name}' bundle exceeds size cap — stopping")
+                break
+            extra_dest = os.path.join(dest_dir, *parts)
+            parent = os.path.dirname(extra_dest)
+            os.makedirs(parent, exist_ok=True)
+            if not os.path.realpath(parent).startswith(os.path.realpath(dest_dir) + os.sep):
+                print(f"perkos-entrypoint: skill '{name}' bundle path escapes directory — skipped")
+                continue
+            try:
+                os.unlink(extra_dest)
+            except FileNotFoundError:
+                pass
+            extra_fd = os.open(
+                extra_dest,
+                os.O_WRONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_TRUNC,
+                0o644,
+            )
+            with os.fdopen(extra_fd, "wb") as f:
+                f.write(extra_data)
+            bundle_bytes += len(extra_data)
         installed += 1
-        print(f"perkos-entrypoint: skill written {name}/SKILL.md ({len(data)} bytes)")
+        print(f"perkos-entrypoint: skill bundle written {name} ({bundle_bytes} bytes)")
     except Exception as e:
         print(f"perkos-entrypoint: skill fetch failed ({e}) — continuing")
 
