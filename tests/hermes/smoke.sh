@@ -286,7 +286,8 @@ fi
 # the good one lands, the bad one is skipped, and boot survived.
 SKILLS_C="perkos-hermes-smoke-skills-$$"
 GOOD_URL="https://raw.githubusercontent.com/austintgriffith/ethskills/191dcc1ead0182aab16d4c742bee8b15f2d0d8d7/security/SKILL.md"
-SKILLS_JSON="[{\"name\":\"smoke-good\",\"url\":\"${GOOD_URL}\"},{\"name\":\"smoke-evil\",\"url\":\"https://evil.example.com/x/SKILL.md\"}]"
+BUNDLE_URL="https://raw.githubusercontent.com/PerkOS-xyz/PerkOS-EQLTY/d7f8e3cfc5a78dc546fe52d9245eab2e69920185/Plugins/eqlty-ens-plugin/skills/ens-agent-fleet/references/records.md"
+SKILLS_JSON="[{\"name\":\"smoke-good\",\"url\":\"${GOOD_URL}\",\"files\":[{\"path\":\"references/records.md\",\"url\":\"${BUNDLE_URL}\"}]},{\"name\":\"smoke-evil\",\"url\":\"https://evil.example.com/x/SKILL.md\"}]"
 SKILLS_B64="$(printf '%s' "$SKILLS_JSON" | base64 | tr -d '\n')"
 
 docker run -d --name "$SKILLS_C" "${ENV_ARGS[@]}" \
@@ -305,6 +306,12 @@ else
   docker logs "$SKILLS_C" 2>&1 | tail -20 >&2
   docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
   fail "skills: allow-listed SKILL.md not installed"
+fi
+if docker exec "$SKILLS_C" test -f /opt/data/skills/smoke-good/references/records.md 2>/dev/null; then
+  pass "skills: curated bundle file installed under the skill directory"
+else
+  docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
+  fail "skills: curated bundle file was not installed"
 fi
 if docker exec "$SKILLS_C" test -e /opt/data/skills/smoke-evil 2>/dev/null; then
   docker rm -f "$SKILLS_C" >/dev/null 2>&1 || true
