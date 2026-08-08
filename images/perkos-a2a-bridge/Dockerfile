@@ -22,6 +22,8 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
+# 0.12.23 adds the supported in-process OpenClaw invitation path; this
+# standalone image remains the supported bridge for Hermes/custom HTTP runtimes.
 # 0.12.22 keeps the platform heartbeat fresh while the bridge is alive and
 # carries the current relay/chat workflow used by external invitations.
 # 0.12.20 carries trusted MiniPay board context through shared fleet dispatch.
@@ -32,7 +34,7 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.22
+ARG PERKOS_A2A_VERSION=0.12.23
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
@@ -41,7 +43,7 @@ RUN apk add --no-cache tini ca-certificates && \
     npm install -g @perkos/perkos-a2a@${PERKOS_A2A_VERSION}
 
 LABEL org.opencontainers.image.title="PerkOS-A2A-Bridge" \
-      org.opencontainers.image.description="Standalone perkos-a2a-agent bridge for Hermes/OpenClaw runtimes" \
+      org.opencontainers.image.description="Standalone perkos-a2a-bridge for Hermes/custom HTTP runtimes" \
       org.opencontainers.image.source="https://github.com/PerkOS-xyz/Perkos-Containers" \
       perkos.runtime="bridge" \
       perkos.a2a-version="${PERKOS_A2A_VERSION}"
