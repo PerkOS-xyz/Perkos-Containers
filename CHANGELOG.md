@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-08 — A2A 0.12.25 runtime-owned external model routing
+
+- Pin OpenClaw plugin and Hermes/custom bridge builds to `@perkos/perkos-a2a` 0.12.25.
+- Verify the PerkOS-hosted archive SHA-256 before installation.
+- Keep external runtime model selection owner-controlled; PerkOS does not inject a default model.
+
 ## 2026-08-08 — A2A 0.12.24 OpenClaw plugin delivery
 
 - Pin the bridge build/publish workflow to `@perkos/perkos-a2a` 0.12.24.
