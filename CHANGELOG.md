@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-08 — A2A 0.12.26 OpenClaw native-harness compatibility
+
+- Pin plugin and bridge builds to the verified 0.12.26 artifact.
+- Preserve runtime-owned model routing while allowing legacy OpenClaw gateways
+  to retry PerkOS Chat turns through their registered native `pi` harness.
+
 ## 2026-08-08 — A2A 0.12.25 runtime-owned external model routing
 
 - Pin OpenClaw plugin and Hermes/custom bridge builds to `@perkos/perkos-a2a` 0.12.25.
