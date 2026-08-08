@@ -35,7 +35,7 @@ FROM node:22-alpine
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
 ARG PERKOS_A2A_VERSION=0.12.25
-ARG PERKOS_A2A_SHA256=bbb72d6b940f48de8adf5c2b04685a79968ce1f1ed23b6970784964df0ab4d31
+ARG PERKOS_A2A_SHA256=d8e516c39ea83a65630604660d29da1ff3446ec700ddee8c341f5141cd0d8048
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
