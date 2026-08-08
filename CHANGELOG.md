@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-08 — A2A 0.12.24 OpenClaw plugin delivery
+
+- Pin the bridge build/publish workflow to `@perkos/perkos-a2a` 0.12.24.
+- Build the bridge from the checksum-verified PerkOS artifact so publication
+  does not depend on npm registry authentication.
+- Keep the Docker sidecar scoped to Hermes/custom HTTP runtimes; external
+  OpenClaw agents use the in-process OpenClaw plugin so chat reaches the real
+  gateway session instead of a nonexistent Hermes-compatible HTTP endpoint.
+
 All notable changes to PerkOS-Containers are recorded here.
 
 Format: one section per release / notable change, newest first. Each entry

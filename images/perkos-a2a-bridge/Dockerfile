@@ -2,8 +2,8 @@
 #
 # PerkOS-A2A bridge sidecar.
 #
-# Standalone Node process that runs alongside a Hermes (or OpenClaw)
-# runtime container. Connects outbound to:
+# Standalone Node process that runs alongside a Hermes/custom HTTP runtime
+# container. OpenClaw uses the in-process plugin archive instead. Connects outbound to:
 #   - wss://chat.perkos.xyz/chat        — user ↔ agent messages
 #   - wss://transport.perkos.xyz/a2a    — agent ↔ agent tasks
 # Authenticates with the agent's `relayApiKey` (issued at provision time).
@@ -22,6 +22,9 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
+# 0.12.24 adds the supported in-process OpenClaw invitation path and keeps
+# the published CLI entries installable; this
+# standalone image remains the supported bridge for Hermes/custom HTTP runtimes.
 # 0.12.22 keeps the platform heartbeat fresh while the bridge is alive and
 # carries the current relay/chat workflow used by external invitations.
 # 0.12.20 carries trusted MiniPay board context through shared fleet dispatch.
@@ -32,16 +35,21 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.22
+ARG PERKOS_A2A_VERSION=0.12.24
+ARG PERKOS_A2A_SHA256=d2a4b05eabb48c358b11ca9d6523bb8ec14d7712ff205ff4bdfe0e4cd85fd70c
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
 # ships a stripped bundle that some wss handshakes choke on.
 RUN apk add --no-cache tini ca-certificates && \
-    npm install -g @perkos/perkos-a2a@${PERKOS_A2A_VERSION}
+    wget -q -O /tmp/perkos-a2a.tgz \
+      "https://perkos.xyz/artifacts/perkos-a2a-${PERKOS_A2A_VERSION}.tgz" && \
+    echo "${PERKOS_A2A_SHA256}  /tmp/perkos-a2a.tgz" | sha256sum -c - && \
+    npm install -g /tmp/perkos-a2a.tgz && \
+    rm /tmp/perkos-a2a.tgz
 
 LABEL org.opencontainers.image.title="PerkOS-A2A-Bridge" \
-      org.opencontainers.image.description="Standalone perkos-a2a-agent bridge for Hermes/OpenClaw runtimes" \
+      org.opencontainers.image.description="Standalone perkos-a2a-bridge for Hermes/custom HTTP runtimes" \
       org.opencontainers.image.source="https://github.com/PerkOS-xyz/Perkos-Containers" \
       perkos.runtime="bridge" \
       perkos.a2a-version="${PERKOS_A2A_VERSION}"
