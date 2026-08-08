@@ -22,9 +22,8 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
-# 0.12.24 adds the supported in-process OpenClaw invitation path and keeps
-# the published CLI entries installable; this
-# standalone image remains the supported bridge for Hermes/custom HTTP runtimes.
+# 0.12.25 makes external model routing runtime-owned for both the in-process
+# OpenClaw path and the standalone Hermes/custom HTTP bridge.
 # 0.12.22 keeps the platform heartbeat fresh while the bridge is alive and
 # carries the current relay/chat workflow used by external invitations.
 # 0.12.20 carries trusted MiniPay board context through shared fleet dispatch.
@@ -35,8 +34,8 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.24
-ARG PERKOS_A2A_SHA256=d2a4b05eabb48c358b11ca9d6523bb8ec14d7712ff205ff4bdfe0e4cd85fd70c
+ARG PERKOS_A2A_VERSION=0.12.25
+ARG PERKOS_A2A_SHA256=bbb72d6b940f48de8adf5c2b04685a79968ce1f1ed23b6970784964df0ab4d31
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
