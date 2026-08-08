@@ -1,8 +1,8 @@
 # Changelog
 
-## 2026-08-08 — A2A 0.12.23 OpenClaw plugin delivery
+## 2026-08-08 — A2A 0.12.24 OpenClaw plugin delivery
 
-- Pin the bridge build/publish workflow to `@perkos/perkos-a2a` 0.12.23.
+- Pin the bridge build/publish workflow to `@perkos/perkos-a2a` 0.12.24.
 - Keep the Docker sidecar scoped to Hermes/custom HTTP runtimes; external
   OpenClaw agents use the in-process OpenClaw plugin so chat reaches the real
   gateway session instead of a nonexistent Hermes-compatible HTTP endpoint.
