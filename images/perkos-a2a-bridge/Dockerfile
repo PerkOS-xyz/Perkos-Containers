@@ -22,6 +22,8 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
+# 0.12.50 adds authoritative organization/project/conversation context while
+# keeping model selection owned by the external runtime.
 # 0.12.49 reports execution-runtime health separately from bridge transport.
 # 0.12.44 also recovers supervisor ownership after container PID reuse.
 # 0.12.42 forwards the active OpenClaw runtime-owned route to legacy embedded
@@ -44,8 +46,8 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.49
-ARG PERKOS_A2A_SHA256=d73f1060e987edf403d80d2758890ba161885e42439ad5a6a35caee9834b5dac
+ARG PERKOS_A2A_VERSION=0.12.50
+ARG PERKOS_A2A_SHA256=3a581ae85d5e37c21c59d3124ae078218a819ea0b720a6d60173ed4bb115df1d
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine

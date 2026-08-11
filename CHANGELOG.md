@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-11 — A2A 0.12.50 project Context Plane
+
+- Pin managed/self-hosted runtime and bridge builds to A2A 0.12.50.
+- Verify the immutable App-hosted package with SHA-256
+  `3a581ae85d5e37c21c59d3124ae078218a819ea0b720a6d60173ed4bb115df1d`.
+- Project chat now receives current organization, project, conversation,
+  roster, task, and document context without overriding runtime model routing.
+
 ## 2026-08-11 — A2A 0.12.49 execution-runtime health
 
 - Pin managed/self-hosted runtime and bridge builds to A2A 0.12.49.
