@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-10 — A2A 0.12.39 atomic OpenClaw supervisor rollover
+
+- Pin bridge and managed runtime builds to the verified 0.12.39 artifact.
+- Keep external runtime model selection runtime-owned for OpenClaw,
+  Hermes, and custom agents.
+- Carry the stale-generation rollover fence and rollback recovery in the
+  shared package while preserving the standalone Hermes/custom bridge path.
+
 ## 2026-08-08 — A2A 0.12.26 OpenClaw native-harness compatibility
 
 - Pin plugin and bridge builds to the verified 0.12.26 artifact.
