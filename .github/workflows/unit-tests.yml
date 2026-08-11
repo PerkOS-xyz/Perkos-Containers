@@ -20,6 +20,9 @@ jobs:
       - name: Run perkos_tools unit tests
         run: ./tests/perkos-tools/run.sh
 
+      - name: Run Hermes managed-runtime patch tests
+        run: python -m unittest tests/hermes/test_patch_managed_runtime.py
+
   hibernation-scripts-bash:
     name: snapshot.sh + restore.sh (bash)
     runs-on: ubuntu-latest
