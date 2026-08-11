@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-10 — A2A 0.12.42 runtime-owned embedded routing
+
+- Pin OpenClaw, Hermes, bridge, and self-hosted compose builds to the verified
+  0.12.42 artifact and SHA-256. The OpenClaw plugin now forwards the gateway's
+  active agent/default route into legacy embedded chat runs; PerkOS does not
+  choose the provider or model.
+- Behavior-test failures now print their secret-free per-check verdict JSON in
+  Actions logs before posting it to the API, so a failed promotion gate is
+  directly diagnosable.
+
 ## 2026-08-10 — Public immutable Hermes skill smoke fixture
 
 - Replace the inaccessible private EQLTY bundle fixture with a public,

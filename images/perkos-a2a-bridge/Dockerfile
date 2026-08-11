@@ -22,6 +22,8 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
+# 0.12.42 forwards the active OpenClaw runtime-owned route to legacy embedded
+# chat runs without choosing an external agent's provider or model.
 # 0.12.41 clears stale OpenClaw 2026.5 chat-session routing through the native
 # session-store API while leaving provider/model selection runtime-owned.
 # 0.12.39 keeps external model routing runtime-owned and fences stale OpenClaw
@@ -40,8 +42,8 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.41
-ARG PERKOS_A2A_SHA256=700903885aa0df4a59859003f086ac7fa76ca18c06169b65032f4b2e88686637
+ARG PERKOS_A2A_VERSION=0.12.42
+ARG PERKOS_A2A_SHA256=8ec49d3b032eedb4ec255fb22f20013260bd832c2120bda51c00dcca81ce0607
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
