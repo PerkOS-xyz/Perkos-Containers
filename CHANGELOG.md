@@ -5,6 +5,7 @@
 - Pin managed/self-hosted runtime and bridge builds to A2A 0.12.49.
 - External bridge images now report execution-runtime reachability separately
   from relay transport so an orphaned sidecar cannot keep an agent green.
+- Pin the Docker build checksum to the exact 0.12.49 production artifact.
 
 ## 2026-08-11 — A2A 0.12.44 supervisor restart recovery
 
