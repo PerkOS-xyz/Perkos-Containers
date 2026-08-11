@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-11 — A2A 0.12.44 supervisor restart recovery
+
+- Pin managed/self-hosted runtime and bridge builds to the verified 0.12.44
+  artifact so OpenClaw containers recover safely when Linux reuses a
+  supervisor PID after a real restart.
+
 ## 2026-08-11 — A2A 0.12.43 visible reply cleanup
 
 - Pin managed/self-hosted runtime and bridge builds to the verified 0.12.43
