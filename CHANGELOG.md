@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-11 — A2A 0.12.43 visible reply cleanup
+
+- Pin managed/self-hosted runtime and bridge builds to the verified 0.12.43
+  artifact. External OpenClaw routing remains runtime-owned, and internal chat
+  routing markers are removed before replies become visible to users.
+
 ## 2026-08-10 — A2A 0.12.42 runtime-owned embedded routing
 
 - Pin OpenClaw, Hermes, bridge, and self-hosted compose builds to the verified
