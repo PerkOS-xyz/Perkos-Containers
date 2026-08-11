@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-10 — A2A 0.12.41 runtime-owned legacy OpenClaw chat
+
+- Pin bridge and managed runtime builds to the verified 0.12.41 artifact.
+- Clear stale OpenClaw 2026.5 chat-session routing and use its built-in harness
+  only for a dynamically resolved retry; PerkOS never selects a model.
+- Retain the Hermes upstream-anchor compatibility needed to publish the full
+  OpenClaw/Hermes/bridge image set.
+
 ## 2026-08-10 — Hermes upstream onboarding anchor compatibility
 
 - Accept both the legacy synchronous and current asynchronous Hermes

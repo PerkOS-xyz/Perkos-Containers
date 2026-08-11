@@ -18,8 +18,8 @@ services:
       dockerfile: Dockerfile
       args:
         HERMES_TAG: latest
-        PERKOS_A2A_VERSION: "0.12.40"
-        PERKOS_A2A_SHA256: "c86d2298cd2422393cb40a6e1ccce59463821cba8c2b34583935036ccba88dba"
+        PERKOS_A2A_VERSION: "0.12.41"
+        PERKOS_A2A_SHA256: "700903885aa0df4a59859003f086ac7fa76ca18c06169b65032f4b2e88686637"
     image: perkos-assistant-hermes:local
     container_name: perkos-assistant
     restart: unless-stopped
@@ -109,8 +109,8 @@ services:
       context: ../../images/perkos-a2a-bridge
       dockerfile: Dockerfile
       args:
-        PERKOS_A2A_VERSION: "0.12.40"
-        PERKOS_A2A_SHA256: "c86d2298cd2422393cb40a6e1ccce59463821cba8c2b34583935036ccba88dba"
+        PERKOS_A2A_VERSION: "0.12.41"
+        PERKOS_A2A_SHA256: "700903885aa0df4a59859003f086ac7fa76ca18c06169b65032f4b2e88686637"
     image: perkos-assistant-bridge:local
     container_name: perkos-assistant-bridge
     restart: unless-stopped
