@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-10 — A2A 0.12.40 verified OpenClaw upgrade restart
+
+- Pin bridge and managed runtime builds to the verified 0.12.40 artifact.
+- External OpenClaw upgrades now stage the package/config and return an
+  immediate, machine-readable restart action rather than waiting on a cached
+  plugin VM; Hermes/custom model routing remains runtime-owned.
+
 ## 2026-08-10 — A2A 0.12.39 atomic OpenClaw supervisor rollover
 
 - Pin bridge and managed runtime builds to the verified 0.12.39 artifact.
