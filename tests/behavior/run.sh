@@ -61,6 +61,8 @@ post_verdict() { # status
 }
 
 finish() { # status
+  jq -nc --arg runtime "$RUNTIME" --arg status "$1" --argjson checks "$CHECKS" \
+    '{runtime:$runtime,status:$status,checks:$checks}'
   post_verdict "$1"
   [ "$1" = "pass" ] && exit 0 || exit 1
 }
