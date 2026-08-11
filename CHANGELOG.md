@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-10 — Hermes upstream onboarding anchor compatibility
+
+- Accept both the legacy synchronous and current asynchronous Hermes
+  first-message session-store guards while keeping the runtime patch
+  fail-closed for unknown upstream layouts.
+- Restore reproducible Hermes image publication without weakening the managed
+  first-message behavior or changing external runtime model routing.
+
 ## 2026-08-10 — A2A 0.12.40 verified OpenClaw upgrade restart
 
 - Pin bridge and managed runtime builds to the verified 0.12.40 artifact.
