@@ -132,23 +132,26 @@ if [ "$READY" != true ]; then
 fi
 add_check "provision-ready" true ""
 
-# --- warm up: wait for the bridge to connect before prompting -------------
-# ECS "ready" only means the task is RUNNING; the runtime + perkos-a2a bridge
-# still need to boot and dial Transport before they can answer. Poll the
-# agent doc's bridgeConnected flag (set by the bridge heartbeat) so we don't
-# prompt a cold agent and record a false "empty reply".
+# --- warm up: wait for bridge + execution runtime before prompting --------
+# ECS "ready" only means the task is RUNNING. A connected bridge is transport
+# evidence, not proof that OpenClaw/Hermes can execute yet. Require the
+# runtime-health evidence introduced in perkos-a2a 0.12.49 so a sidecar cannot
+# race ahead of its runtime and produce a false delivery failure.
 WARM=false
 for _ in $(seq 1 36); do   # ~3 min max (5s * 36)
-  BC="$(curl -sS "${API}/agents/${AGENT_ID}" -H "$AUTH" | jq -r '.bridgeConnected // false')"
-  [ "$BC" = "true" ] && { WARM=true; break; }
+  AGENT_STATE="$(curl -sS "${API}/agents/${AGENT_ID}" -H "$AUTH")"
+  BC="$(jq -r '.bridgeConnected // false' <<<"$AGENT_STATE")"
+  RH="$(jq -r '.runtimeHealthy // false' <<<"$AGENT_STATE")"
+  [ "$BC" = "true" ] && [ "$RH" = "true" ] && { WARM=true; break; }
   sleep 5
 done
 if [ "$WARM" != true ]; then
-  add_check "bridge-warmup" false "bridge did not connect within timeout"
+  add_check "runtime-warmup" false \
+    "bridge/runtime not healthy within timeout (bridgeConnected=${BC:-false}, runtimeHealthy=${RH:-false})"
   curl -sS -X DELETE "${API}/agents/${AGENT_ID}" -H "$AUTH" >/dev/null || true
   finish "fail"
 fi
-add_check "bridge-warmup" true ""
+add_check "runtime-warmup" true "bridge and execution runtime are healthy"
 
 # --- reply quality (GATING): real A2A round-trip via the probe endpoint -----
 # The API's /internal/runtimes/probe-agent waits (relay discover-gate) until
