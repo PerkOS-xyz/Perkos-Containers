@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-10 — Public immutable Hermes skill smoke fixture
+
+- Replace the inaccessible private EQLTY bundle fixture with a public,
+  commit-pinned file. The smoke now validates curated multi-file installation
+  instead of failing on an unrelated 404.
+
 ## 2026-08-10 — A2A 0.12.41 runtime-owned legacy OpenClaw chat
 
 - Pin bridge and managed runtime builds to the verified 0.12.41 artifact.
