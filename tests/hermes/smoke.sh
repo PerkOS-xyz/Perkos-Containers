@@ -286,7 +286,9 @@ fi
 # the good one lands, the bad one is skipped, and boot survived.
 SKILLS_C="perkos-hermes-smoke-skills-$$"
 GOOD_URL="https://raw.githubusercontent.com/austintgriffith/ethskills/191dcc1ead0182aab16d4c742bee8b15f2d0d8d7/security/SKILL.md"
-BUNDLE_URL="https://raw.githubusercontent.com/PerkOS-xyz/PerkOS-EQLTY/d7f8e3cfc5a78dc546fe52d9245eab2e69920185/Plugins/eqlty-ens-plugin/skills/ens-agent-fleet/references/records.md"
+# Keep the auxiliary bundle public and immutable. The previous private EQLTY
+# URL returned 404 to unauthenticated CI even though the installer was healthy.
+BUNDLE_URL="https://raw.githubusercontent.com/austintgriffith/ethskills/191dcc1ead0182aab16d4c742bee8b15f2d0d8d7/README.md"
 SKILLS_JSON="[{\"name\":\"smoke-good\",\"url\":\"${GOOD_URL}\",\"files\":[{\"path\":\"references/records.md\",\"url\":\"${BUNDLE_URL}\"}]},{\"name\":\"smoke-evil\",\"url\":\"https://evil.example.com/x/SKILL.md\"}]"
 SKILLS_B64="$(printf '%s' "$SKILLS_JSON" | base64 | tr -d '\n')"
 
