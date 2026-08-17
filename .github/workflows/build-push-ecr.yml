@@ -29,8 +29,11 @@ env:
   # PUBLIC registry for the self-hosted deploy bundle. ECR (above) is private +
   # for the PerkOS-managed ECS path; the docker-compose bundle a user runs on
   # their OWN VPS pulls `:latest` from here, so these MUST be public packages.
-  # NOTE: one-time, mark each package Public in the org GHCR settings after the
-  # first push (Packages → perkos-{openclaw,hermes,a2a} → Change visibility).
+  # Packages inherit the repository's visibility, and this repository is public,
+  # so a newly pushed package comes out Public with no manual step. (The old
+  # note here said to flip each one by hand in the org GHCR settings; that was
+  # true only while this repo was private. Verified 2026-08-17: an anonymous
+  # pull of perkos-{openclaw,hermes,a2a,zeroclaw} succeeds.)
   GHCR_ORG: ghcr.io/perkos-xyz
   # Upstream repos to wrap. The moving `:latest` tag is resolved to a
   # concrete @sha256 digest at build time (see "Resolve upstream digest").
