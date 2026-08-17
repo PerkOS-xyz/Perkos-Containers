@@ -33,7 +33,12 @@ ENV_ARGS=(
   # Upstream Hermes now refuses to start the api_server without a key, even on
   # a loopback bind — the provisioner always sets this in prod, so the smoke
   # must too or the container exits 1 (this was failing the build).
-  -e API_SERVER_KEY=dummy-smoke-key
+  # >=16 chars on purpose: current upstream refuses to start the api_server on a
+  # key it considers a placeholder or too short ("API_SERVER_KEY is a placeholder
+  # or too short (<16 chars)"), and the old value was 15. Production is
+  # unaffected — the provisioner mints a 64-char key — but the fixture blocked
+  # every attempt to evaluate a newer upstream before any real check could run.
+  -e API_SERVER_KEY=dummy-smoke-key-0123456789abcdef
 )
 
 cleanup() {
