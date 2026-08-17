@@ -22,6 +22,9 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
+# 0.12.57 routes ZeroClaw through the HTTP delivery path in every entry point;
+# 0.12.56 reached only three of the four gates, so the agent connected and then
+# failed every task.
 # 0.12.56 delivers to the ZeroClaw runtime over POST /webhook, which takes a
 # bare {"message": ...} and answers {"model", "response"}. ZeroClaw exposes no
 # OpenAI-compatible route, so it cannot reuse the Hermes/OpenClaw body shapes.
@@ -49,8 +52,8 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.56
-ARG PERKOS_A2A_SHA256=f2871a2c0dc8c8ae640851e80b27ce326457cd8a620e3e9adcff1b3d53688497
+ARG PERKOS_A2A_VERSION=0.12.57
+ARG PERKOS_A2A_SHA256=094ddeb96051f22b125cc924c32cb2425d743f1b768457f690655f5df42df2f6
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine

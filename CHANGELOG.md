@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-08-17 — A2A 0.12.57 ZeroClaw delivery reaches every gate
+
+- Pin runtime and bridge builds to A2A 0.12.57, SHA-256
+  `094ddeb96051f22b125cc924c32cb2425d743f1b768457f690655f5df42df2f6`.
+- 0.12.56 taught the bridge the ZeroClaw `/webhook` shape but only reached three
+  of the four HTTP-delivery gates, so a provisioned ZeroClaw agent launched,
+  booted, connected, reported healthy and then failed every task. Caught by
+  running the behavior test against production, not by review.
+
 ## 2026-08-17 — A2A 0.12.56 ZeroClaw delivery
 
 - Pin managed/self-hosted runtime and bridge builds to A2A 0.12.56 and verify
