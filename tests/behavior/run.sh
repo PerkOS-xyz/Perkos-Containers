@@ -25,15 +25,16 @@
 #   RUNTIME_INGEST_KEY     shared secret for /internal/runtimes/*
 #   FIREBASE_WEB_API_KEY   project web API key (public; used for the exchange)
 #
-# Usage: run.sh <openclaw|hermes> <primaryTag>
+# Usage: run.sh <openclaw|hermes|zeroclaw> <primaryTag>
 set -uo pipefail
 
-RUNTIME_LC="${1:?usage: run.sh <openclaw|hermes> <primaryTag>}"
-PRIMARY_TAG="${2:?usage: run.sh <openclaw|hermes> <primaryTag>}"
+RUNTIME_LC="${1:?usage: run.sh <openclaw|hermes|zeroclaw> <primaryTag>}"
+PRIMARY_TAG="${2:?usage: run.sh <openclaw|hermes|zeroclaw> <primaryTag>}"
 case "$RUNTIME_LC" in
   openclaw) RUNTIME="OpenClaw";;
   hermes)   RUNTIME="Hermes";;
-  *) echo "runtime must be openclaw or hermes" >&2; exit 2;;
+  zeroclaw) RUNTIME="ZeroClaw";;
+  *) echo "runtime must be openclaw, hermes or zeroclaw" >&2; exit 2;;
 esac
 
 : "${PERKOS_API_URL:?PERKOS_API_URL is required}"
