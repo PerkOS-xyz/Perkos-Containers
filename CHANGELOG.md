@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-08-17 — A2A 0.12.56 ZeroClaw delivery
+
+- Pin managed/self-hosted runtime and bridge builds to A2A 0.12.56 and verify
+  the immutable App-hosted package with SHA-256
+  `f2871a2c0dc8c8ae640851e80b27ce326457cd8a620e3e9adcff1b3d53688497`.
+- The bridge now delivers to ZeroClaw over `POST /webhook`, which takes a bare
+  `{"message": ...}` and answers `{"model", "response"}`. ZeroClaw exposes no
+  OpenAI-compatible route, so it cannot reuse the Hermes/OpenClaw body shapes.
+  Without this pin a provisioned ZeroClaw agent boots healthy and never answers.
+
 ## 2026-08-17 — ZeroClaw runtime image (third runtime, first slice)
 
 Adds `images/zeroclaw/`, wrapping the Rust ZeroClaw runtime the same way we wrap
