@@ -1,5 +1,67 @@
 # Changelog
 
+## 2026-08-17 — ZeroClaw runtime image (third runtime, first slice)
+
+Adds `images/zeroclaw/`, wrapping the Rust ZeroClaw runtime the same way we wrap
+OpenClaw and Hermes. Validated end to end against the live PerkOS LLM gateway:
+the agent boots, answers, reasons, and replies in its assigned persona.
+
+- **Wraps `ghcr.io/zeroclaw-labs/zeroclaw:debian`, not `:latest`.** Upstream's
+  `latest` is distroless (no shell, no package manager) and cannot carry the
+  PerkOS entrypoint or the awscli hibernation scripts. `debian` is the same
+  binary on a Debian base, published multi-arch (amd64 + arm64). No `alpine`
+  tag is published on GHCR.
+- **Config is rendered by driving the binary** (`zeroclaw config set
+  --no-interactive`) instead of substituting a checked-in template. ZeroClaw
+  encrypts secrets at rest (`api_key = "enc2:…"`); a hand-written plaintext TOML
+  would either be rejected or would persist the LLM key in the clear. The smoke
+  test asserts the key is never present in plaintext.
+- Delivery contract for the bridge: **`POST /webhook {"message": "..."}`** with a
+  Bearer token, answering `{"model": "...", "response": "..."}`. ZeroClaw does
+  **not** expose an OpenAI-compatible `/v1/chat/completions` (POST returns 405;
+  the GET serves the dashboard SPA), so the bridge cannot reuse the
+  OpenClaw/Hermes delivery path — a `zeroclaw` adapter is still to come.
+
+Four upstream traps found the hard way, each of which produces a container that
+boots, reports healthy, and is silently useless. All four are now handled in the
+entrypoint and pinned by a smoke assertion:
+
+1. **Secret writes need `--no-interactive`.** Without it every `config set` on a
+   secret aborts with "Secret input requires a terminal on stdin and stderr",
+   which no ECS task has.
+2. **The baked config is `schema_version 1`.** Any `config init`/`config set`
+   is refused until `zeroclaw config migrate` runs, and the gateway happily
+   boots on the stale config meanwhile. Migration is idempotent, so we run it on
+   every boot before touching config.
+3. **A missing `risk_profiles.<alias>` entry fails every message** with the
+   generic `500 {"error":"LLM request failed"}` — the LLM is never called. We
+   create the profile and reference it, keeping upstream's conservative defaults
+   (`level = supervised`, `workspace_only = true`).
+4. **The gateway routes `/webhook` to the baked `default` agent.** Configuring a
+   freshly created alias (`main`) leaves a perfectly wired agent that never
+   receives traffic while `zeroclaw doctor` reports the provider healthy.
+
+Also: the pairing handshake is pre-seeded via `gateway.paired_tokens`, so
+provisioning is non-interactive (the gateway logs "Pairing: ACTIVE" and rejects
+anonymous calls with 401); the persona is written into the agent's own workspace
+(`.zeroclaw/agents/<alias>/workspace/AGENTS.md` + `SOUL.md`), which is the only
+place the runtime discovers it — pointing `identity.aieos_path` at a file
+elsewhere is not enough; `python3` is installed explicitly because ZeroClaw is a
+single Rust binary on bare Debian and the hardened skill-pack fetch would
+otherwise silently no-op; and the hibernation snapshot excludes
+`.zeroclaw/config.toml` + `.gateway-token`, matching the existing per-runtime
+exclusions.
+
+`tests/zeroclaw/smoke.sh` runs 27 assertions in CI on every build.
+
+**Two manual, one-time steps are still required before the new CI job can push:**
+create the `perkos-zeroclaw` ECR repository (it does not exist yet), and mark
+the `ghcr.io/perkos-xyz/perkos-zeroclaw` package Public in the org GHCR settings
+(UI-only, owner-only) so the self-hosted bundle can pull it.
+
+Not in this slice: the bridge adapter, the PerkOS-API runtime registry, the
+wizard surface, and hibernation validation. See `ZEROCLAW-RUNTIME-DESIGN.md`.
+
 ## 2026-08-11 — A2A 0.12.50 project Context Plane
 
 - Pin managed/self-hosted runtime and bridge builds to A2A 0.12.50.

@@ -36,8 +36,14 @@ env:
   # concrete @sha256 digest at build time (see "Resolve upstream digest").
   OPENCLAW_REPO: ghcr.io/openclaw/openclaw
   HERMES_REPO: nousresearch/hermes-agent
+  ZEROCLAW_REPO: ghcr.io/zeroclaw-labs/zeroclaw
   OPENCLAW_TAG: latest
   HERMES_TAG: latest
+  # `debian`, NOT `latest`: upstream's `latest` is distroless (no shell, no
+  # package manager), which cannot carry the PerkOS entrypoint or the awscli
+  # hibernation scripts. `debian` is the same binary on a Debian base and is
+  # published multi-arch. Upstream ships no `alpine` tag on GHCR.
+  ZEROCLAW_TAG: debian
   # PIN (2026-07-01): upstream hermes `latest` (sha256:f8cb504b…) is mid-refactor
   # on multiplexing ("Workstream A"): the fail-closed get_secret guard landed but
   # the api_server per-turn profile scope did NOT, so EVERY /v1/responses turn in
@@ -263,6 +269,99 @@ jobs:
             --runtime hermes \
             --primary-tag "${{ steps.tags.outputs.version }}" \
             --upstream-source "${HERMES_REPO}" \
+            --upstream-version "${{ steps.upstream.outputs.version }}" \
+            --upstream-digest "${{ steps.upstream.outputs.digest }}" \
+            --a2a-version "${PERKOS_A2A_VERSION}" \
+            --build-status ok
+
+  build-zeroclaw:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tags
+        id: tags
+        run: |
+          DATE="$(date -u +%Y.%m.%d)"
+          SHA="${GITHUB_SHA::7}"
+          SUFFIX="${{ github.event.inputs.tag_suffix }}"
+          [ -n "$SUFFIX" ] && SUFFIX="-${SUFFIX}"
+          echo "version=${ZEROCLAW_TAG}-perkos.${DATE}.${SHA}${SUFFIX}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Resolve upstream digest
+        id: upstream
+        run: |
+          REPO="${ZEROCLAW_REPO}"
+          DIGEST="$(docker buildx imagetools inspect "${REPO}:${ZEROCLAW_TAG}" \
+            --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          if [ -z "$DIGEST" ]; then echo "could not resolve digest"; exit 1; fi
+          VERSION="$(docker buildx imagetools inspect "${REPO}@${DIGEST}" \
+            --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}' \
+            2>/dev/null || true)"
+          echo "ref=${REPO}@${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Resolved ${REPO}:${ZEROCLAW_TAG} -> ${DIGEST} (version='${VERSION}')"
+
+      - name: Build zeroclaw (load for testing)
+        uses: docker/build-push-action@v6
+        with:
+          context: images/zeroclaw
+          load: true
+          platforms: linux/amd64
+          build-args: |
+            ZEROCLAW_REF=${{ steps.upstream.outputs.ref }}
+            ZEROCLAW_TAG=${{ env.ZEROCLAW_TAG }}
+            ZEROCLAW_VERSION=${{ steps.upstream.outputs.version }}
+          tags: perkos-zeroclaw:test
+
+      - name: Smoke test zeroclaw
+        run: ./tests/zeroclaw/smoke.sh perkos-zeroclaw:test
+
+      - name: Build + push zeroclaw
+        uses: docker/build-push-action@v6
+        with:
+          context: images/zeroclaw
+          push: true
+          platforms: linux/amd64,linux/arm64
+          build-args: |
+            ZEROCLAW_REF=${{ steps.upstream.outputs.ref }}
+            ZEROCLAW_TAG=${{ env.ZEROCLAW_TAG }}
+            ZEROCLAW_VERSION=${{ steps.upstream.outputs.version }}
+          tags: |
+            ${{ env.ECR_REGISTRY }}/perkos-zeroclaw:${{ steps.tags.outputs.version }}
+            ${{ env.ECR_REGISTRY }}/perkos-zeroclaw:latest
+            ${{ env.GHCR_ORG }}/perkos-zeroclaw:latest
+            ${{ env.GHCR_ORG }}/perkos-zeroclaw:${{ steps.tags.outputs.version }}
+
+      - name: Register image (beta channel)
+        env:
+          RUNTIME_INGEST_KEY: ${{ secrets.RUNTIME_INGEST_KEY }}
+        run: |
+          ./scripts/ingest-runtime-image.sh \
+            --runtime zeroclaw \
+            --primary-tag "${{ steps.tags.outputs.version }}" \
+            --upstream-source "${ZEROCLAW_REPO}" \
             --upstream-version "${{ steps.upstream.outputs.version }}" \
             --upstream-digest "${{ steps.upstream.outputs.digest }}" \
             --a2a-version "${PERKOS_A2A_VERSION}" \
