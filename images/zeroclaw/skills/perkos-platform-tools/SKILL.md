@@ -1,0 +1,146 @@
+---
+name: perkos-platform-tools
+description: "PerkOS platform operations toolkit — read runbook, search knowledge, query the caller's own agents (per-wallet isolated), explain plugins. Backed by the Platform Tools API."
+version: 0.2.0
+platforms: [linux]
+metadata:
+  hermes:
+    tags: [perkos, platform, assistant, ops]
+    related_skills: []
+    audience: [perkos-assistant]
+---
+
+# PerkOS platform tools
+
+Skill that powers the PerkOS Assistant. Two complementary surfaces:
+
+1. **Bundled runbook (markdown context)** at `/opt/perkos-assistant/runbook/` — the LLM reads these for general "how does X work" answers. Cite the slug.
+2. **Platform Tools API (live calls)** via `scripts/perkos_tools.py` — for dynamic per-caller queries (the user's own agents) and structured knowledge search.
+
+## Live tools (v0.2 — Platform Tools API)
+
+The wrapper script `scripts/perkos_tools.py` calls the PerkOS Platform Tools API. It NEVER asks the LLM for the caller's wallet — the wallet is derived server-side from the chat conversation. The LLM only supplies:
+
+- `--conv-id <id>` — the conversation id from the `[PERKOS_CHAT:<id>]` marker in the system message.
+- `<toolName>` and `<argsJson>` — the tool to call and its inputs.
+
+Available tools (response shape: `{ ok, data?, errorClass?, message? }`):
+
+| Tool | Inputs | What it returns |
+|---|---|---|
+| `getRunbookFor` | `{"topic":"04-lifecycle"}` (slug or stem) | `{ content, source }` — full markdown of the runbook entry |
+| `searchKnowledge` | `{"query":"fargate ecs","limit":5}` | `{ hits: [{ topic, excerpt, score }] }` |
+| `listMyAgents` | `{}` | `{ agents: [{ name, status, ... }] }` — the CALLER's agents only |
+| `getMyAgent` | `{"name":"MyBuilder"}` | `{ agent: { ... } }` — only if owned by the caller |
+| `explainPlugin` | `{"pluginId":"github"}` | `{ id, label, description, requires, examples }` |
+| `listProjectTasks` | `{"projectId":"<id>"}` | `{ tasks: [{ id, name, status, agent, prompt, result }] }` — the project's job board |
+| `createTask` | `{"projectId":"<id>","name":"...","prompt":"...","agent":"<worker>","priority":"High","parents":["<taskId>"],"skills":["..."],"goalMode":true,"acceptanceCriteria":"..."}` | `{ taskId }` — seed/assign a task (PM use). `parents` = task ids that must be Done first (dependency graph). `goalMode`+`acceptanceCriteria` = result is auto-judged; failures return to the worker with feedback |
+| `updateTaskStatus` | `{"projectId":"<id>","taskId":"<id>","status":"In progress\|Done","result":"...","claimToken":"<from your assignment>","proof":[{"status":"passed","label":"...","url":"..."}]}` | `{ taskId, status }` — move a task + record result (worker use). Always pass the `claimToken` from your assignment prompt; attach `proof` evidence when finishing |
+| `postProjectMessage` | `{"projectId":"<id>","text":"..."}` | `{ messageId }` — notify the PM / team in project chat |
+
+### Calling pattern
+
+```bash
+# List the caller's agents.
+python3 /opt/data/skills/perkos-platform-tools/scripts/perkos_tools.py \
+    call listMyAgents '{}' \
+    --conv-id "$CONV_ID"
+
+# Search the runbook + curated knowledge.
+python3 /opt/data/skills/perkos-platform-tools/scripts/perkos_tools.py \
+    call searchKnowledge '{"query":"fargate","limit":3}' \
+    --conv-id "$CONV_ID"
+
+# Read a specific runbook entry.
+python3 /opt/data/skills/perkos-platform-tools/scripts/perkos_tools.py \
+    call getRunbookFor '{"topic":"04-lifecycle"}' \
+    --conv-id "$CONV_ID"
+```
+
+`$CONV_ID` is the conv id from the `[PERKOS_CHAT:<id>]` system marker. The script will refuse to run without it (exit 4).
+
+### Exit codes
+
+| code | meaning |
+|---|---|
+| 0 | tool returned `ok: true` |
+| 2 | tool returned `ok: false` (bad input, not-found, etc) — read `errorClass` |
+| 3 | bridge or Tools API unreachable / 5xx |
+| 4 | bad usage (missing env, malformed args) |
+
+### Authorization model (why you can't impersonate other wallets)
+
+The Tools API enforces tenant isolation at THREE layers; the LLM is forced to be honest by construction:
+
+1. The bridge process is the only entity with the Tools-API HMAC secret. The LLM never sees it.
+2. The bridge mints a JWT bound to the wallet from the **active chat conversation** (not from a runtime parameter). When the LLM asks for a token, the bridge looks up the convId in its registry and signs with the conv's wallet — no wallet input is accepted.
+3. Tools like `listMyAgents` / `getMyAgent` derive `walletAddress` from the JWT claim, not from request body. So even if the LLM crafted a body with `{ "walletAddress": "0xother" }`, it would be ignored.
+
+This means: **the LLM cannot list another wallet's agents even if it tries to**. State this when asked.
+
+## Workflow when a user asks a question
+
+1. Read the user's message + the `[PERKOS_CHAT:<convId>]` marker. Extract `convId`.
+2. Decide the question class:
+   - **Platform-general** ("what deploy modes are there?") → call `getRunbookFor` or `searchKnowledge`; cite the slug in your reply.
+   - **Caller's data** ("what agents do I have?") → call `listMyAgents` / `getMyAgent`. The walletAddress is derived server-side; do not ask the user for it.
+   - **Action** ("delete my Builder agent") → explain what it does + cost impact + that it's irreversible, then deep-link to `https://app.perkos.xyz/agents/<name>`. Tool-driven actions ship in v3.
+3. If `searchKnowledge` returns hits, follow up with `getRunbookFor` on the top hit to read the full entry before answering.
+4. If a tool returns `ok: false`, surface the `errorClass` honestly. Common ones:
+   - `NOT_FOUND` — the topic / agent / plugin doesn't exist (list available options if known)
+   - `RATE_LIMITED` — too many calls; ask the user to wait
+   - `BAD_INPUT` — your args were malformed (re-read this SKILL.md)
+   - `UNAVAILABLE` — Firestore or another dep is down; report the outage
+
+## Project job board (PM / worker workflow)
+
+When you are part of a project (the user or another agent gives you a
+`projectId`), you can drive its job board with the tools above:
+
+**If you are the PM / orchestrator (playbook):**
+0. The worker names supplied in the PerkOS project roster are authoritative
+   across runtimes. A worker may be Hermes, OpenClaw, or externally hosted and
+   does not need to exist in this container's local agent/subagent registry.
+   Never register, create, search for, or substitute a local worker. Assign the
+   exact project-roster name; PerkOS dispatches the task after approval.
+1. Break the goal into the SMALLEST useful tasks. For each, `createTask`
+   with a clear `name` + `prompt` (state the deliverable and what "done"
+   looks like), and set `agent` to the worker who should do it — only use
+   worker names that actually exist on the project roster.
+2. Sequence multi-step work with `parents`: a synthesis/review task lists
+   the ids of the research tasks it depends on. The dispatcher holds it
+   until every parent is Done, then wakes the worker automatically.
+3. For quality-critical tasks set `goalMode: true` + `acceptanceCriteria`
+   ("an acceptable result contains …"). The platform auto-judges the
+   worker's submission and bounces it back with feedback if it falls short.
+4. Watch progress with `listProjectTasks`; when all are `Done`, post a
+   summary + recommendation with `postProjectMessage`.
+
+**If you are a worker and you were assigned a task (playbook):**
+1. Your assignment prompt contains `taskId` and a `claimToken` — that token
+   proves the task is yours. Include it in EVERY `updateTaskStatus` call
+   (it also acts as your heartbeat on long tasks).
+2. `updateTaskStatus` → `"In progress"` when you start.
+3. Do the actual work. Produce a concrete deliverable, not a promise.
+4. `updateTaskStatus` → `"Done"` with `result` = the deliverable, plus
+   `proof` entries for anything verifiable (a command you ran, a link, a
+   check that passed).
+5. `postProjectMessage` to notify the PM the task is complete.
+6. If your submission is rejected by the acceptance check, you'll be
+   re-woken with the judge's feedback — address it specifically, resubmit.
+
+Always pass the real `taskId` / `projectId` / `claimToken` you were given —
+never invent ids. Call the tools; do not just claim you did the work.
+
+## Boundaries
+
+- Never ask the user for their wallet. The convId IS the identity.
+- Never invent agent names. If `listMyAgents` returns empty, say "you don't have any agents yet" — don't fabricate.
+- Never cite a runbook topic that doesn't exist. The fixed set: `00-platform-overview`, `01-deploy-modes`, `02-runtime-choices`, `03-llm-options`, `04-lifecycle`, `05-allowlist-and-escalation`.
+- Never claim to have executed an action when you only emitted a link. Use language like "you can do that here: <link>" not "I deleted it for you".
+
+## See also
+
+- `references/examples.md` — copy-pasteable bash for common queries
+- `/opt/perkos-assistant/SOUL.md` — the persona that sets tone + memory policy
+- `/opt/perkos-assistant/runbook/` — the canonical answers (also exposed via `getRunbookFor`)
