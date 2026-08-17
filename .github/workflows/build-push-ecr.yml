@@ -440,7 +440,7 @@ jobs:
   # replies, then tear the agent down. The result is posted back to the API;
   # a "fail" keeps the image un-promotable to the public channel.
   behavior-test:
-    needs: [build-openclaw, build-hermes]
+    needs: [build-openclaw, build-hermes, build-zeroclaw]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -454,8 +454,9 @@ jobs:
           [ -n "$SUFFIX" ] && SUFFIX="-${SUFFIX}"
           echo "openclaw=${OPENCLAW_TAG}-perkos.${DATE}.${SHA}${SUFFIX}" >> "$GITHUB_OUTPUT"
           echo "hermes=${HERMES_TAG}-perkos.${DATE}.${SHA}${SUFFIX}" >> "$GITHUB_OUTPUT"
+          echo "zeroclaw=${ZEROCLAW_TAG}-perkos.${DATE}.${SHA}${SUFFIX}" >> "$GITHUB_OUTPUT"
 
-      - name: Behavior test (openclaw + hermes)
+      - name: Behavior test (openclaw + hermes + zeroclaw)
         env:
           RUNTIME_INGEST_KEY: ${{ secrets.RUNTIME_INGEST_KEY }}
           FIREBASE_WEB_API_KEY: ${{ vars.FIREBASE_WEB_API_KEY }}
@@ -463,4 +464,5 @@ jobs:
           rc=0
           ./tests/behavior/run.sh openclaw "${{ steps.tags.outputs.openclaw }}" || rc=1
           ./tests/behavior/run.sh hermes   "${{ steps.tags.outputs.hermes }}"   || rc=1
+          ./tests/behavior/run.sh zeroclaw "${{ steps.tags.outputs.zeroclaw }}" || rc=1
           exit $rc
