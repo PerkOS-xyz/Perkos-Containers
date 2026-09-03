@@ -480,7 +480,7 @@ upstream's generic Hermes persona until someone hot-patched the file by hand.
 Now the canonical SOUL is restored on every boot.
 
 Also pulled the current production SOUL from the live `perkos-assistant`
-container on the LLM VPS (`46.225.62.30`) and committed it as the repo's
+container on the LLM VPS and committed it as the repo's
 canonical version at `images/hermes/perkos-assistant/SOUL.md` (74 → 578 lines).
 The runbook files in the repo already matched production line-for-line.
 
