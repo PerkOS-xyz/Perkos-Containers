@@ -1,11 +1,22 @@
 # PerkOS Assistant — deploy runbook
 
-Manual deploy to the LLM VPS at `46.225.62.30` (SSH key `~/.ssh/perkos-cloud-agents-hetzner`). The Assistant is not part of the ECS fleet — it runs as a long-lived Docker container on the same VPS as the LLM gateway so the inference RTT is loopback-fast.
+Manual deploy to the LLM VPS (see "Deploy target" below). The Assistant is not part of the ECS fleet — it runs as a long-lived Docker container on the same VPS as the LLM gateway so the inference RTT is loopback-fast.
+
+## Deploy target
+
+The host and SSH key are deliberately not recorded in this repo. Export them
+before running any command below; the real values live in the workspace
+`CLAUDE.md`, which is not versioned.
+
+```bash
+export DEPLOY_HOST=root@<llm-vps>
+export DEPLOY_KEY=~/.ssh/<llm-vps-key>
+```
 
 ## Prerequisites
 
 - A super-admin Firebase ID token on the wallet that controls `app.perkos.xyz`. The token expires in ~1 hour; mint a fresh one right before running step 1.
-- SSH access to `root@46.225.62.30` with `~/.ssh/perkos-cloud-agents-hetzner`.
+- SSH access to the LLM VPS as root, with the deploy key.
 - Docker on the VPS (already there — version 29.1.3 as of 2026-05-26).
 
 ## One-time bootstrap
@@ -39,7 +50,7 @@ If `name "PerkOS-Assistant" is already taken`, the registry already has the agen
 ### Step 2 — Lay down the source on the VPS
 
 ```bash
-ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 '
+ssh -i "$DEPLOY_KEY" "$DEPLOY_HOST" '
   mkdir -p /opt/perkos-assistant /var/perkos-assistant/hermes
   cd /opt/perkos-assistant
   if [ ! -d Perkos-Containers ]; then
@@ -55,7 +66,7 @@ ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 '
 Copy the env example and fill in the two values from step 1:
 
 ```bash
-ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 '
+ssh -i "$DEPLOY_KEY" "$DEPLOY_HOST" '
   cd /opt/perkos-assistant/Perkos-Containers/deploy/perkos-assistant
   if [ ! -f .env ]; then cp .env.example .env; fi
   echo "Now edit /opt/perkos-assistant/Perkos-Containers/deploy/perkos-assistant/.env"
@@ -71,7 +82,7 @@ Then edit the file (`vim`, `nano`, whatever) and set:
 ### Step 4 — Build + run
 
 ```bash
-ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 '
+ssh -i "$DEPLOY_KEY" "$DEPLOY_HOST" '
   cd /opt/perkos-assistant/Perkos-Containers/deploy/perkos-assistant
   docker compose build perkos-assistant
   docker compose up -d
@@ -86,14 +97,14 @@ First build takes ~2-3 min (pulls `nousresearch/hermes-agent:latest`, installs `
 
 ```bash
 # Container healthy?
-ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 \
+ssh -i "$DEPLOY_KEY" "$DEPLOY_HOST" \
   'docker inspect perkos-assistant --format "{{.State.Health.Status}}"'
 
 # Should print "healthy" within ~30s of starting.
 
 # Chat router auth check: tail the logs and look for the perkos-a2a
 # bridge confirming it connected to chat.perkos.xyz as agent:PerkOS-Assistant.
-ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 \
+ssh -i "$DEPLOY_KEY" "$DEPLOY_HOST" \
   'docker logs -f perkos-assistant 2>&1 | grep -E "chat|relay|connect"'
 ```
 
@@ -108,7 +119,7 @@ Look for lines like:
 Image bumps (new SOUL content, new runbook entries, new skill code):
 
 ```bash
-ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 '
+ssh -i "$DEPLOY_KEY" "$DEPLOY_HOST" '
   cd /opt/perkos-assistant/Perkos-Containers
   git pull
   cd deploy/perkos-assistant
@@ -122,7 +133,7 @@ Identity stays the same across rebuilds; only the code/content changes. Hermes s
 ## Tearing down
 
 ```bash
-ssh -i ~/.ssh/perkos-cloud-agents-hetzner root@46.225.62.30 '
+ssh -i "$DEPLOY_KEY" "$DEPLOY_HOST" '
   cd /opt/perkos-assistant/Perkos-Containers/deploy/perkos-assistant
   docker compose down
   # Optional — full wipe (loses chat history):

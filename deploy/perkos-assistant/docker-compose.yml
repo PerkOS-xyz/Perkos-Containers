@@ -1,4 +1,4 @@
-# PerkOS Assistant — production compose for the LLM VPS (46.225.62.30).
+# PerkOS Assistant — production compose for the LLM VPS.
 #
 # Single Hermes container, locally-built from ../../images/hermes/. We
 # build on the VPS instead of pulling from ECR because:
