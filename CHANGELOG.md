@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-03 — A2A 0.12.69 Solana board scope
+
+- Pin runtime and bridge builds to A2A 0.12.69, SHA-256
+  `247caaee67754a18cdcb93195e0188504f577d75c60352590e93677135b7ebec`.
+- 0.12.69 keeps a Solana owner wallet in its exact case for the board MCP
+  server and the tools JWT. Up to 0.12.66 the bridge lowercased the owner, so a
+  Solana account's agent either refused to start its board tools or acted as a
+  different wallet.
+- Also carries 0.12.58 to 0.12.67: managed-maintenance markers for Hermes and
+  durable chat replies (agent-local outbox, replay after reconnect, no second
+  execution once a run has started).
+- The bridge now installs A2A into `/opt/perkos-a2a` instead of globally:
+  0.12.69 depends on `@perkos/shared-types` pinned to a public Git commit, and
+  npm cannot build that dependency during a global install (`tsup: not found`).
+  git is added only for the install layer and removed afterwards.
+
 ## 2026-08-17 — A2A 0.12.57 ZeroClaw delivery reaches every gate
 
 - Pin runtime and bridge builds to A2A 0.12.57, SHA-256
