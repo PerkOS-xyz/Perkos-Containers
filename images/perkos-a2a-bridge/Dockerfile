@@ -22,6 +22,8 @@ FROM node:22-alpine
 
 # Default kept in lockstep with the workflow env's PERKOS_A2A_VERSION
 # in .github/workflows/build-push-ecr.yml — bump them together.
+# 0.12.69 keeps a Solana owner wallet in its exact case for the board tools
+# and the tools JWT; earlier versions lowercased it and broke Solana accounts.
 # 0.12.57 routes ZeroClaw through the HTTP delivery path in every entry point;
 # 0.12.56 reached only three of the four gates, so the agent connected and then
 # failed every task.
@@ -52,18 +54,27 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.57
-ARG PERKOS_A2A_SHA256=094ddeb96051f22b125cc924c32cb2425d743f1b768457f690655f5df42df2f6
+ARG PERKOS_A2A_VERSION=0.12.69
+ARG PERKOS_A2A_SHA256=247caaee67754a18cdcb93195e0188504f577d75c60352590e93677135b7ebec
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
 # ships a stripped bundle that some wss handshakes choke on.
+# Since 0.12.69 the package depends on @perkos/shared-types pinned to a public
+# Git commit, which npm builds from source: that needs git at build time, and a
+# global install cannot run that build (its devDependencies land outside the
+# clone, so `tsup` is not found). Install into a local prefix instead.
 RUN apk add --no-cache tini ca-certificates && \
+    apk add --no-cache --virtual .a2a-build git && \
     wget -q -O /tmp/perkos-a2a.tgz \
       "https://perkos.xyz/artifacts/perkos-a2a-${PERKOS_A2A_VERSION}.tgz" && \
     echo "${PERKOS_A2A_SHA256}  /tmp/perkos-a2a.tgz" | sha256sum -c - && \
-    npm install -g /tmp/perkos-a2a.tgz && \
-    rm /tmp/perkos-a2a.tgz
+    mkdir -p /opt/perkos-a2a && cd /opt/perkos-a2a && \
+    npm install --omit=dev --no-audit --no-fund /tmp/perkos-a2a.tgz && \
+    rm /tmp/perkos-a2a.tgz && npm cache clean --force && \
+    apk del .a2a-build
+
+ENV PATH="/opt/perkos-a2a/node_modules/.bin:${PATH}"
 
 LABEL org.opencontainers.image.title="PerkOS-A2A-Bridge" \
       org.opencontainers.image.description="Standalone perkos-a2a-bridge for Hermes/custom HTTP runtimes" \
