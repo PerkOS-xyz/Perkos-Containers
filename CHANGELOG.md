@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-10-04 — OpenClaw pinned to the 2026.7.1 digest
+
+- Pin the OpenClaw upstream with `OPENCLAW_PIN_DIGEST`
+  `sha256:2f5ce8848a1a69b3c460622e566cb9395da9fd18d7ef7b038cd8e2c4f195decf`
+  (2026.7.1, the build the 2026-08-17 release passed on). The `2026.7.1` tag now
+  resolves to a different digest, so the pin is by digest.
+- Upstream `latest` moved to 2026.9.8, which rejects
+  `agents.defaults.memorySearch` (now `memory.search`) and exits the gateway at
+  boot for every agent. 2026.7.1 rejects `memory.search`, so the template
+  cannot serve both. 2026.9.x also moves `agents.list` to a keyed
+  `agents.entries` and retires `default: true`; the co-resident renderer and the
+  bridge chat path need that migration before the pin is cleared.
+- The OpenClaw smoke now checks that the baseline gateway answers `/healthz`, so
+  a rejected config fails at the baseline instead of surfacing only as
+  "multi-agent: gateway NOT stable".
+
 ## 2026-10-03 — A2A 0.12.69 Solana board scope
 
 - Pin runtime and bridge builds to A2A 0.12.69, SHA-256
