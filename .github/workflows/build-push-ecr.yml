@@ -57,6 +57,20 @@ env:
   # arm64+amd64). Clear it to float `latest` again once upstream lands the
   # api_server scope work — verify with the PHASE-1 playbook probe first.
   HERMES_PIN_DIGEST: sha256:4e809687be6438b7fddbaa089667c2c5856f82f6e7acab255be57a039c583922
+  # PIN (2026-10-04): upstream openclaw `latest` moved from 2026.7.1 to 2026.9.8
+  # (sha256:d0ded1dd…), which rejects our rendered config at boot:
+  # `agents.defaults.memorySearch` is now an unrecognized key (moved to
+  # `memory.search`), so the gateway exits before it listens, for EVERY agent,
+  # not only multi-agent. 2026.7.1 in turn rejects `memory.search`, so the
+  # template cannot serve both. 2026.9.x also moves `agents.list` to a keyed
+  # `agents.entries`, retires `default: true`, and fails closed on multi-agent
+  # routing with no binding, which the co-resident renderer and the bridge chat
+  # path have not been checked against. This digest is the 2026.7.1 build the
+  # 2026-08-17 release passed smoke + behavior on (OCI index, arm64+amd64). The
+  # `2026.7.1` tag now points at a different digest, so pin by digest, not tag.
+  # Clear it to float `latest` once the template and renderer move to the
+  # 2026.9.x schema and the behavior test passes on it.
+  OPENCLAW_PIN_DIGEST: sha256:2f5ce8848a1a69b3c460622e566cb9395da9fd18d7ef7b038cd8e2c4f195decf
   # @perkos/perkos-a2a@0.12.7 — 0.12.0 added the A2A_HERMES_AUTO_REPLY flag
   # but the multi-agent reply loop only works from 0.12.5+ (0.12.5 task_response
   # carries the real runtime text, 0.12.6 raises the local-task wait 45s→240s,
@@ -118,6 +132,13 @@ jobs:
           REPO="${OPENCLAW_REPO}"
           DIGEST="$(docker buildx imagetools inspect "${REPO}:${OPENCLAW_TAG}" \
             --format '{{json .Manifest.Digest}}' | tr -d '"')"
+          # OPENCLAW_PIN_DIGEST overrides the tag→digest resolve (see the env
+          # block comment: upstream 2026.9.x rejects our rendered config). The
+          # tag is still resolved above so the log shows where `latest` is now.
+          if [ -n "${OPENCLAW_PIN_DIGEST:-}" ]; then
+            echo "Upstream ${REPO}:${OPENCLAW_TAG} is ${DIGEST:-unresolved}; using PINNED digest ${OPENCLAW_PIN_DIGEST} (OPENCLAW_PIN_DIGEST)"
+            DIGEST="${OPENCLAW_PIN_DIGEST}"
+          fi
           if [ -z "$DIGEST" ]; then echo "could not resolve digest"; exit 1; fi
           VERSION="$(docker buildx imagetools inspect "${REPO}@${DIGEST}" \
             --format '{{ index .Image.Config.Labels "org.opencontainers.image.version" }}' \
