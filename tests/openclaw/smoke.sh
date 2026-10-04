@@ -111,6 +111,26 @@ wait_jq() {
   fail "$1 (timed out after ${TIMEOUT_BOOT_SECS}s)"; return 1
 }
 
+gateway_up() {
+  # gateway_up "<description>" — poll the gateway's /healthz (the same probe as
+  # the image HEALTHCHECK) until it answers or TIMEOUT_BOOT_SECS elapses. The
+  # config file appears BEFORE the gateway validates it, so an upstream that
+  # rejects the rendered config still passes every jq check; this is what
+  # catches it. Stops early once the container has exited.
+  local waited=0 state
+  while [ "$waited" -lt "$TIMEOUT_BOOT_SECS" ]; do
+    state=$(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null || echo missing)
+    if [ "$state" != "running" ]; then
+      fail "$1 (state=$state)"; return 1
+    fi
+    if docker exec "$CONTAINER" node -e "fetch('http://127.0.0.1:3000/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+      pass "$1"; return 0
+    fi
+    sleep 1; waited=$((waited + 1))
+  done
+  fail "$1 (timed out after ${TIMEOUT_BOOT_SECS}s)"; return 1
+}
+
 # ---------------------------------------------------------------
 # Pass 1: baseline boot. Assert the current schema renders with the
 # env-var substitutions applied.
@@ -130,6 +150,7 @@ if run_container perkos-openclaw-smoke-baseline-$$; then
   jqok "baseline: default provider key is ollama"       '(.models.providers | has("ollama"))'
   jqok "baseline: no unsubstituted __PLACEHOLDER__ left" \
        '[.. | strings | select(startswith("__") and endswith("__"))] | length == 0'
+  gateway_up "baseline: gateway accepts the rendered config and answers /healthz on 3000"
 
   # Even without a custom persona, the managed channel policy is installed as
   # standing instructions so simple messaging queries stay on the fast path.
