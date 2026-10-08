@@ -130,6 +130,12 @@ if run_container perkos-openclaw-smoke-baseline-$$; then
   jqok "baseline: default provider key is ollama"       '(.models.providers | has("ollama"))'
   jqok "baseline: no unsubstituted __PLACEHOLDER__ left" \
        '[.. | strings | select(startswith("__") and endswith("__"))] | length == 0'
+  jqok "baseline: optional feature plugins ship off" \
+       '[.plugins.entries | (.github, .canvas, .["talk-voice"], .["cua-computer"], .["device-pair"], .["linux-node"], .["file-transfer"], .geolocation) | .enabled] | all(. == false)'
+  jqok "baseline: nightly memory review ships off" \
+       '.plugins.entries["memory-core"].config.dreaming.enabled == false'
+  jqok "baseline: browser plugin left to its default" \
+       '(.plugins.entries | has("browser")) | not'
 
   # Even without a custom persona, the managed channel policy is installed as
   # standing instructions so simple messaging queries stay on the fast path.
@@ -330,6 +336,34 @@ if run_container perkos-openclaw-smoke-multiagent-$$ \
   if [ "$mp_state" = "running" ] && [ "$mp_restarts" -eq 0 ]; then
     pass "multi-agent: gateway stable with agents.list (state=$mp_state restarts=$mp_restarts)"
   else fail "multi-agent: gateway NOT stable (state=$mp_state restarts=$mp_restarts)"; fi
+fi
+
+# ---------------------------------------------------------------
+# Pass 7: optional features. PERKOS_ENABLED_FEATURES turns the listed
+# plugins back on; a capability turned off in PERKOS_DISABLED_TOOLS also
+# unloads the plugin behind it.
+# ---------------------------------------------------------------
+echo "== optional features =="
+cleanup
+if run_container perkos-openclaw-smoke-features-$$ \
+    -e PERKOS_ENABLED_FEATURES="github, dreaming,paired-devices,not-a-feature" \
+    -e PERKOS_DISABLED_TOOLS="browser"; then
+  jqok "features: github turned on"        '.plugins.entries.github.enabled == true'
+  jqok "features: paired devices turned on" \
+       '[.plugins.entries | (.["device-pair"], .["linux-node"], .["file-transfer"], .geolocation) | .enabled] | all(. == true)'
+  jqok "features: nightly memory review turned on" \
+       '.plugins.entries["memory-core"].config.dreaming.enabled == true'
+  jqok "features: features left out stay off" \
+       '[.plugins.entries | (.canvas, .["talk-voice"], .["cua-computer"]) | .enabled] | all(. == false)'
+  jqok "features: browser off unloads the browser plugin" '.plugins.entries.browser.enabled == false'
+  jqok "features: unknown id ignored"      '(.plugins.entries | has("not-a-feature")) | not'
+fi
+cleanup
+if run_container perkos-openclaw-smoke-features-nomem-$$ \
+    -e PERKOS_ENABLED_FEATURES="dreaming" \
+    -e PERKOS_DISABLED_TOOLS="memory"; then
+  jqok "features: memory off keeps nightly memory review off" \
+       '.plugins.entries["memory-core"].config.dreaming.enabled == false'
 fi
 
 exit "$ok"

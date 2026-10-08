@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-10-09 — OpenClaw optional features start off
+
+- The OpenClaw template now ships eight bundled plugins off (canvas,
+  cua-computer, device-pair, file-transfer, geolocation, github, linux-node,
+  talk-voice) along with memory-core's nightly memory review (dreaming). A fresh
+  agent loads 6 plugins instead of 14 and creates no dreaming cron job.
+- `PERKOS_ENABLED_FEATURES` (comma-separated) turns them back on per agent:
+  `dreaming`, `github`, `canvas`, `voice-talk`, `computer-use`,
+  `paired-devices` (device-pair, linux-node, file-transfer, geolocation).
+  Unknown ids are ignored with a warning.
+- Turning off the `browser` capability in `PERKOS_DISABLED_TOOLS` also unloads
+  the browser plugin, and turning off `memory` keeps dreaming off.
+
 ## 2026-10-08 — A2A 0.12.70 queued task outcome
 
 - Pin runtime and bridge builds to A2A 0.12.70, SHA-256

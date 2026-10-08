@@ -98,6 +98,36 @@ done
 IFS=$_OLDIFS
 DENY_TOOLS=$(printf '%s' "$DENY_TOOLS" | sed 's/^ *//; s/ *$//')
 
+# Optional features. PERKOS_ENABLED_FEATURES is a comma-separated list of the
+# feature ids the wallet turned ON in PerkOS App (wizard or Edit agent). The
+# template ships each backing bundled plugin off, so a fresh agent boots light;
+# every id here turns its plugin(s) back on. Empty/unset → all of them stay off.
+ENABLE_PLUGINS=""
+DREAMING_ENABLED=false
+BROWSER_PLUGIN_ENABLED=true
+add_plugin() { for _p in "$@"; do ENABLE_PLUGINS="$ENABLE_PLUGINS $_p"; done; }
+IFS=','
+for _feat in ${PERKOS_ENABLED_FEATURES:-}; do
+  _feat=$(printf '%s' "$_feat" | tr -d '[:space:]')
+  case "$_feat" in
+    dreaming)        DREAMING_ENABLED=true ;;
+    github)          add_plugin github ;;
+    canvas)          add_plugin canvas ;;
+    voice-talk)      add_plugin talk-voice ;;
+    computer-use)    add_plugin cua-computer ;;
+    paired-devices)  add_plugin device-pair linux-node file-transfer geolocation ;;
+    "")              ;;
+    *) echo "perkos-entrypoint: WARNING unknown feature id '$_feat' — ignored" >&2 ;;
+  esac
+done
+IFS=$_OLDIFS
+ENABLE_PLUGINS=$(printf '%s' "$ENABLE_PLUGINS" | sed 's/^ *//; s/ *$//')
+# A capability the wallet turned off also unloads the plugin behind it: no
+# browser plugin without the browser tool, no nightly memory review without
+# memory.
+case " $DENY_TOOLS " in *" browser "*) BROWSER_PLUGIN_ENABLED=false ;; esac
+case " $DENY_TOOLS " in *" memory_search "*) DREAMING_ENABLED=false ;; esac
+
 # Substitute __FOO__ placeholders. jq is in the image already.
 #
 # Plugin enabled flags are substituted as STRINGS first and then
@@ -130,6 +160,9 @@ jq \
   --arg discord_plugin_enabled  "$DISCORD_PLUGIN_ENABLED" \
   --arg workboard_enabled       "$WORKBOARD_PLUGIN_ENABLED" \
   --arg deny_tools              "$DENY_TOOLS" \
+  --arg enable_plugins          "$ENABLE_PLUGINS" \
+  --arg dreaming_enabled        "$DREAMING_ENABLED" \
+  --arg browser_plugin_enabled  "$BROWSER_PLUGIN_ENABLED" \
   '
   (..|strings) |= (
     gsub("__PERKOS_AGENT_ID__";       $agent_id)
@@ -182,6 +215,15 @@ jq \
   | if ($deny_tools | length) > 0
     then .tools.deny = ($deny_tools | split(" ") | map(select(length > 0)))
     else . end
+  # Optional features: turn on the bundled plugins the wallet enabled.
+  | reduce ($enable_plugins | split(" ") | map(select(length > 0)))[] as $p
+      (.; .plugins.entries[$p].enabled = true)
+  | if $dreaming_enabled == "true"
+    then .plugins.entries["memory-core"].config.dreaming.enabled = true
+    else . end
+  | if $browser_plugin_enabled == "false"
+    then .plugins.entries.browser.enabled = false
+    else . end
   ' /opt/perkos/openclaw.template.json > "$OPENCLAW_CONFIG_PATH"
 
 chmod 600 "$OPENCLAW_CONFIG_PATH"
@@ -191,6 +233,7 @@ echo "perkos-entrypoint: channel plugins — telegram=$TELEGRAM_PLUGIN_ENABLED s
 if [ -n "$DENY_TOOLS" ]; then
   echo "perkos-entrypoint: capability toggles — tools.deny=[$DENY_TOOLS] (from PERKOS_DISABLED_TOOLS=${PERKOS_DISABLED_TOOLS:-})"
 fi
+echo "perkos-entrypoint: optional features — plugins=[$ENABLE_PLUGINS] dreaming=$DREAMING_ENABLED browser=$BROWSER_PLUGIN_ENABLED"
 
 # Bundled PerkOS skills (baked at /opt/perkos-skills/ in the Dockerfile).
 # Copy them into the workspace skills dir where OpenClaw auto-discovers
