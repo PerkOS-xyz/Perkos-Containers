@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-08 — A2A 0.12.70 queued task outcome
+
+- Pin runtime and bridge builds to A2A 0.12.70, SHA-256
+  `913e73b9e8140d2577727dc1a4db36c0bb78c7f0303ac85bc307717b72ec33e3`.
+- 0.12.70 reports a queued relay task's outcome when a runtime turn runs out of
+  time. The bridge waits 15 seconds past the longer of `A2A_TASK_WAIT_MS` and
+  `PERKOS_RUNTIME_DELIVERY_TIMEOUT_MS` and sends a failure when the task still
+  has no terminal state, so the dispatcher retries right away instead of
+  showing the task as working until its claim expires.
+
 ## 2026-10-03 — A2A 0.12.69 Solana board scope
 
 - Pin runtime and bridge builds to A2A 0.12.69, SHA-256

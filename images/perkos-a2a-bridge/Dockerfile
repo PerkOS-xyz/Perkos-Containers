@@ -24,6 +24,8 @@ FROM node:22-alpine
 # in .github/workflows/build-push-ecr.yml — bump them together.
 # 0.12.69 keeps a Solana owner wallet in its exact case for the board tools
 # and the tools JWT; earlier versions lowercased it and broke Solana accounts.
+# 0.12.70 reports a queued relay task's outcome when a runtime turn runs out
+# of time, so the dispatcher retries instead of waiting for the task claim.
 # 0.12.57 routes ZeroClaw through the HTTP delivery path in every entry point;
 # 0.12.56 reached only three of the four gates, so the agent connected and then
 # failed every task.
@@ -54,8 +56,8 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.69
-ARG PERKOS_A2A_SHA256=247caaee67754a18cdcb93195e0188504f577d75c60352590e93677135b7ebec
+ARG PERKOS_A2A_VERSION=0.12.70
+ARG PERKOS_A2A_SHA256=913e73b9e8140d2577727dc1a4db36c0bb78c7f0303ac85bc307717b72ec33e3
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
