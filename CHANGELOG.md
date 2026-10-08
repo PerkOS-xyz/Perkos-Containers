@@ -7,8 +7,9 @@
   talk-voice) along with memory-core's nightly memory review (dreaming). A fresh
   agent loads 6 plugins instead of 14 and creates no dreaming cron job.
 - `PERKOS_ENABLED_FEATURES` (comma-separated) turns them back on per agent:
-  `dreaming`, `github`, `canvas`, `voice-talk`, `computer-use`,
-  `paired-devices` (device-pair, linux-node, file-transfer, geolocation).
+  `dreaming`, `github`, `voice-talk`, `computer-use`, `location`
+  (geolocation), `paired-devices` (device-pair, linux-node, file-transfer,
+  canvas).
   Unknown ids are ignored with a warning.
 - Turning off the `browser` capability in `PERKOS_DISABLED_TOOLS` also unloads
   the browser plugin, and turning off `memory` keeps dreaming off.

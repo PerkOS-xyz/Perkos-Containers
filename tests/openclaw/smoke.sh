@@ -350,11 +350,11 @@ if run_container perkos-openclaw-smoke-features-$$ \
     -e PERKOS_DISABLED_TOOLS="browser"; then
   jqok "features: github turned on"        '.plugins.entries.github.enabled == true'
   jqok "features: paired devices turned on" \
-       '[.plugins.entries | (.["device-pair"], .["linux-node"], .["file-transfer"], .geolocation) | .enabled] | all(. == true)'
+       '[.plugins.entries | (.["device-pair"], .["linux-node"], .["file-transfer"], .canvas) | .enabled] | all(. == true)'
   jqok "features: nightly memory review turned on" \
        '.plugins.entries["memory-core"].config.dreaming.enabled == true'
   jqok "features: features left out stay off" \
-       '[.plugins.entries | (.canvas, .["talk-voice"], .["cua-computer"]) | .enabled] | all(. == false)'
+       '[.plugins.entries | (.geolocation, .["talk-voice"], .["cua-computer"]) | .enabled] | all(. == false)'
   jqok "features: browser off unloads the browser plugin" '.plugins.entries.browser.enabled == false'
   jqok "features: unknown id ignored"      '(.plugins.entries | has("not-a-feature")) | not'
 fi

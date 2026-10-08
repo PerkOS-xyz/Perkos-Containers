@@ -112,10 +112,10 @@ for _feat in ${PERKOS_ENABLED_FEATURES:-}; do
   case "$_feat" in
     dreaming)        DREAMING_ENABLED=true ;;
     github)          add_plugin github ;;
-    canvas)          add_plugin canvas ;;
     voice-talk)      add_plugin talk-voice ;;
     computer-use)    add_plugin cua-computer ;;
-    paired-devices)  add_plugin device-pair linux-node file-transfer geolocation ;;
+    paired-devices)  add_plugin device-pair linux-node file-transfer canvas ;;
+    location)        add_plugin geolocation ;;
     "")              ;;
     *) echo "perkos-entrypoint: WARNING unknown feature id '$_feat' — ignored" >&2 ;;
   esac
