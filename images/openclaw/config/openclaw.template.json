@@ -13,6 +13,23 @@
       "enabled": false
     }
   },
+  "plugins": {
+    "entries": {
+      "canvas": { "enabled": false },
+      "cua-computer": { "enabled": false },
+      "device-pair": { "enabled": false },
+      "file-transfer": { "enabled": false },
+      "geolocation": { "enabled": false },
+      "github": { "enabled": false },
+      "linux-node": { "enabled": false },
+      "talk-voice": { "enabled": false },
+      "memory-core": {
+        "config": {
+          "dreaming": { "enabled": false }
+        }
+      }
+    }
+  },
   "mcp": {
     "servers": {
       "perkos-board": {
