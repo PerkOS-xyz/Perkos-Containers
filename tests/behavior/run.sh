@@ -157,7 +157,7 @@ add_check "runtime-warmup" true "bridge and execution runtime are healthy"
 # --- reply quality (GATING): real A2A round-trip via the probe endpoint -----
 # The API's /internal/runtimes/probe-agent waits (relay discover-gate) until
 # the agent is connected, sends a proper A2A message, and returns the
-# correlated task_response. Asserts a substantive (non-empty, >=20 char) reply
+# correlated task_response. Asserts a substantive (non-empty, MIN_LENS) reply
 # to two canonical prompts — catching a runtime that connects but answers empty
 # (the "(empty reply from <runtime>)" sentinel is treated as empty). The complex
 # PM prompt can legitimately take just over 150s on a cold OpenClaw session, so
@@ -170,6 +170,10 @@ PROMPTS=(
   "You are the PM. Break the goal 'ship a landing page' into 3 delegated tasks with owners. Be concrete."
 )
 NAMES=("basic-reply" "${RUNTIME_LC}-non-empty-reply")
+# Shortest reply each prompt accepts. A correct one-sentence confirmation can be
+# as short as "Online and ready." (17 chars), so the first prompt only rules out
+# an empty or one-word answer; the PM breakdown still needs a real paragraph.
+MIN_LENS=(10 20)
 ALL_OK=true
 for i in "${!PROMPTS[@]}"; do
   RES="$(curl -sS --max-time "$PROBE_CURL_MAX_SECONDS" -X POST "${API}/internal/runtimes/probe-agent" \
@@ -178,7 +182,7 @@ for i in "${!PROMPTS[@]}"; do
       --argjson timeout "$PROBE_TIMEOUT_MS" \
       '{agentName:$a, prompt:$p, timeoutMs:$timeout}')" 2>/dev/null || echo '{}')"
   REPLY="$(jq -r '.reply // ""' <<<"$RES")"
-  if [ "$(jq -r '.ok // false' <<<"$RES")" = "true" ] && [ "${#REPLY}" -ge 20 ]; then
+  if [ "$(jq -r '.ok // false' <<<"$RES")" = "true" ] && [ "${#REPLY}" -ge "${MIN_LENS[$i]}" ]; then
     add_check "${NAMES[$i]}" true "reply len=${#REPLY}"
   else
     add_check "${NAMES[$i]}" false "$(jq -r '.detail // "no reply"' <<<"$RES")"
