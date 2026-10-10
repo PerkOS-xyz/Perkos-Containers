@@ -181,6 +181,13 @@ jq \
   | if $llm_provider != "ollama"
     then .models.providers |= (with_entries(.key = $llm_provider))
     else . end
+  # Web search through the PerkOS gateway: the Ollama web_search provider posts
+  # to the provider host (the gateway), which forwards to a signed-in Ollama.
+  # OpenClaw never auto-selects a key-free provider, so name it here. BYOK
+  # agents have no Ollama host and keep the OpenClaw default.
+  | if $llm_provider == "ollama"
+    then .tools.web.search.provider = "ollama"
+    else . end
   # Telegram is a native OpenClaw channel plugin, configured under
   # channels.telegram (not plugins.entries). The bot token remains in the
   # process environment and is referenced by name so it is never written to
