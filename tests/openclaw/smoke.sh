@@ -136,6 +136,8 @@ if run_container perkos-openclaw-smoke-baseline-$$; then
        '.plugins.entries["memory-core"].config.dreaming.enabled == false'
   jqok "baseline: browser plugin left to its default" \
        '(.plugins.entries | has("browser")) | not'
+  jqok "baseline: web search goes through the gateway's Ollama host" \
+       '.tools.web.search.provider == "ollama"'
 
   # Even without a custom persona, the managed channel policy is installed as
   # standing instructions so simple messaging queries stay on the fast path.
@@ -364,6 +366,12 @@ if run_container perkos-openclaw-smoke-features-nomem-$$ \
     -e PERKOS_DISABLED_TOOLS="memory"; then
   jqok "features: memory off keeps nightly memory review off" \
        '.plugins.entries["memory-core"].config.dreaming.enabled == false'
+fi
+cleanup
+if run_container perkos-openclaw-smoke-byok-search-$$ \
+    -e PERKOS_LLM_PROVIDER=byok -e PERKOS_LLM_API=openai-completions; then
+  jqok "byok: web search keeps the OpenClaw default (no Ollama host)" \
+       '(.tools.web.search.provider // "unset") == "unset"'
 fi
 
 exit "$ok"

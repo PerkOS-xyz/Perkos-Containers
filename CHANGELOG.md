@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-11 — OpenClaw web search through the PerkOS gateway
+
+- OpenClaw agents on the PerkOS gateway now select the Ollama `web_search`
+  provider (`tools.web.search.provider: "ollama"`). It posts to the gateway,
+  which forwards the search to a signed-in Ollama host, so agents search the
+  web without a separate key. Until now `web_search` answered "no provider
+  configured" and agents fell back to `web_fetch`.
+- BYOK agents have no Ollama host and keep the OpenClaw default.
+
 ## 2026-10-09 — OpenClaw optional features start off
 
 - The OpenClaw template now ships eight bundled plugins off (canvas,
