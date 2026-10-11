@@ -15,12 +15,12 @@
 # not replace a coordinated Dev chat/Tools integration test.
 #
 # Usage:
-#   ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.71
+#   ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.72
 
 set -uo pipefail
 
 IMAGE="${1:-perkos-a2a-bridge:test}"
-EXPECTED_VERSION="${2:-0.12.71}"
+EXPECTED_VERSION="${2:-0.12.72}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINER="perkos-a2a-bridge-smoke-$$"
 

@@ -39,7 +39,7 @@ jobs:
           platforms: linux/amd64
           tags: perkos-a2a-bridge:test
       - name: Verify installed package and actor emission without external network
-        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.71
+        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.72
 
   perkos-tools-python:
     name: perkos_tools.py (Python stdlib)
