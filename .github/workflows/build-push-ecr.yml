@@ -11,9 +11,18 @@ on:
     paths:
       - "images/**"
       - "tests/**"
+      - "scripts/select-build-scope.py"
+      - "deploy/perkos-assistant/docker-compose.yml"
       - ".github/workflows/build-push-ecr.yml"
+      - ".github/workflows/unit-tests.yml"
   workflow_dispatch:
     inputs:
+      build_scope:
+        description: "Bridge only (no runtime provisioning), or the full runtime release"
+        type: choice
+        options: [all, bridge]
+        required: true
+        default: all
       tag_suffix:
         description: "Optional suffix appended to the image tag (e.g. 'rc1')"
         required: false
@@ -64,15 +73,37 @@ env:
   # 0.12.0 regressed chat→"No response from OpenClaw" and A2A→queued-artifact
   # with tools not firing. Keep in lockstep with the bridge Dockerfile default
   # and deploy/perkos-assistant/docker-compose.yml — bump all three together.
-  PERKOS_A2A_VERSION: 0.12.70
-  PERKOS_A2A_SHA256: 913e73b9e8140d2577727dc1a4db36c0bb78c7f0303ac85bc307717b72ec33e3
+  PERKOS_A2A_VERSION: 0.12.71
+  PERKOS_A2A_SHA256: 69a38789fc89075aa377d49b9b33408a3af82d3187f950d70f8c84261ddfd982
+  PERKOS_A2A_ARTIFACT_BASE_URL: https://registry.npmjs.org/@perkos/perkos-a2a/-
   # Where to register the freshly-pushed image (BETA channel) + later post
   # behavior-test results. PERKOS_API_URL is a repo variable; the shared
   # secret is RUNTIME_INGEST_KEY.
   PERKOS_API_URL: ${{ vars.PERKOS_API_URL }}
 
 jobs:
+  release-scope:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      scope: ${{ steps.scope.outputs.scope }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Select release scope (fail closed on missing history)
+        id: scope
+        env:
+          RELEASE_EVENT: ${{ github.event_name }}
+          RELEASE_SCOPE: ${{ inputs.build_scope }}
+          RELEASE_BEFORE: ${{ github.event.before }}
+          RELEASE_HEAD: ${{ github.sha }}
+        run: python3 scripts/select-build-scope.py
+
   build-openclaw:
+    needs: release-scope
+    if: needs.release-scope.outputs.scope == 'all'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -172,6 +203,8 @@ jobs:
             --build-status ok
 
   build-hermes:
+    needs: release-scope
+    if: needs.release-scope.outputs.scope == 'all'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -278,6 +311,8 @@ jobs:
             --build-status ok
 
   build-zeroclaw:
+    needs: release-scope
+    if: needs.release-scope.outputs.scope == 'all'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -371,18 +406,39 @@ jobs:
             --build-status ok
 
   build-perkos-a2a-bridge:
+    needs: release-scope
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Compute image tags
         id: tags
+        env:
+          TAG_SUFFIX: ${{ inputs.tag_suffix }}
+          RELEASE_SCOPE: ${{ needs.release-scope.outputs.scope }}
         run: |
           DATE="$(date -u +%Y.%m.%d)"
           SHA="${GITHUB_SHA::7}"
-          SUFFIX="${{ github.event.inputs.tag_suffix }}"
+          SUFFIX="$TAG_SUFFIX"
+          if [[ -n "$SUFFIX" && ! "$SUFFIX" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]{0,31}$ ]]; then
+            echo "Invalid tag suffix"; exit 1
+          fi
           [ -n "$SUFFIX" ] && SUFFIX="-${SUFFIX}"
-          echo "version=v${PERKOS_A2A_VERSION}-perkos.${DATE}.${SHA}${SUFFIX}" >> "$GITHUB_OUTPUT"
+          VERSION="v${PERKOS_A2A_VERSION}-perkos.${DATE}.${SHA}${SUFFIX}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          # A bridge-only release must not change either runtime's latest alias.
+          {
+            echo "publish_tags<<PERKOS_TAGS"
+            echo "${ECR_REGISTRY}/perkos-a2a-bridge:${VERSION}"
+            echo "${ECR_REGISTRY}/perkos-a2a-bridge:${PERKOS_A2A_VERSION}"
+            echo "${GHCR_ORG}/perkos-a2a:${VERSION}"
+            echo "${GHCR_ORG}/perkos-a2a:${PERKOS_A2A_VERSION}"
+            if [[ "$RELEASE_SCOPE" == "all" ]]; then
+              echo "${ECR_REGISTRY}/perkos-a2a-bridge:latest"
+              echo "${GHCR_ORG}/perkos-a2a:latest"
+            fi
+            echo "PERKOS_TAGS"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -417,10 +473,11 @@ jobs:
           build-args: |
             PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
             PERKOS_A2A_SHA256=${{ env.PERKOS_A2A_SHA256 }}
+            PERKOS_A2A_ARTIFACT_BASE_URL=${{ env.PERKOS_A2A_ARTIFACT_BASE_URL }}
           tags: perkos-a2a-bridge:test
 
       - name: Smoke test perkos-a2a-bridge
-        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test
+        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test "${PERKOS_A2A_VERSION}"
 
       - name: Build + push perkos-a2a-bridge
         uses: docker/build-push-action@v6
@@ -431,11 +488,9 @@ jobs:
           build-args: |
             PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
             PERKOS_A2A_SHA256=${{ env.PERKOS_A2A_SHA256 }}
-          tags: |
-            ${{ env.ECR_REGISTRY }}/perkos-a2a-bridge:${{ steps.tags.outputs.version }}
-            ${{ env.ECR_REGISTRY }}/perkos-a2a-bridge:latest
-            ${{ env.GHCR_ORG }}/perkos-a2a:${{ env.PERKOS_A2A_VERSION }}
-            ${{ env.GHCR_ORG }}/perkos-a2a:latest
+            PERKOS_A2A_ARTIFACT_BASE_URL=${{ env.PERKOS_A2A_ARTIFACT_BASE_URL }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          tags: ${{ steps.tags.outputs.publish_tags }}
 
   # Behavior test: provision an ephemeral agent from each freshly-pushed
   # image, send canonical prompts (incl. a PM/plan-and-delegate prompt that
@@ -443,7 +498,8 @@ jobs:
   # replies, then tear the agent down. The result is posted back to the API;
   # a "fail" keeps the image un-promotable to the public channel.
   behavior-test:
-    needs: [build-openclaw, build-hermes, build-zeroclaw]
+    needs: [release-scope, build-openclaw, build-hermes, build-zeroclaw]
+    if: needs.release-scope.outputs.scope == 'all'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

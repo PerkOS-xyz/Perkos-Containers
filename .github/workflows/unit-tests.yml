@@ -7,6 +7,40 @@ on:
     branches: [main]
 
 jobs:
+  a2a-release-contract:
+    name: A2A release scope + pins
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Release scope and pin regressions
+        run: python -m unittest discover -s tests/perkos-a2a-bridge -p 'test_*.py'
+      - name: Smoke script syntax
+        run: bash -n tests/perkos-a2a-bridge/smoke.sh
+
+  a2a-installed-package:
+    name: A2A image + installed actor smoke (no cloud agents)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build pinned bridge for verification only
+        uses: docker/build-push-action@v6
+        with:
+          context: images/perkos-a2a-bridge
+          load: true
+          push: false
+          platforms: linux/amd64
+          tags: perkos-a2a-bridge:test
+      - name: Verify installed package and actor emission without external network
+        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.71
+
   perkos-tools-python:
     name: perkos_tools.py (Python stdlib)
     runs-on: ubuntu-latest
@@ -21,7 +55,7 @@ jobs:
         run: ./tests/perkos-tools/run.sh
 
       - name: Run Hermes managed-runtime patch tests
-        run: python -m unittest tests/hermes/test_patch_managed_runtime.py
+        run: python -m unittest discover -s tests/hermes -p 'test_patch_managed_runtime.py'
 
   hibernation-scripts-bash:
     name: snapshot.sh + restore.sh (bash)

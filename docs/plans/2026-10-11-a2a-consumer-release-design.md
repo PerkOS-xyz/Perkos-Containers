@@ -12,9 +12,10 @@ App adds the published archive/checksum and regression coverage without changing
 
 Containers aligns workflow, Dockerfile and compose version/hash. Artifact base URL is explicitly configurable and defaults to the canonical npm registry path; all paths retain checksum verification. A release selector limits bridge-only pushes and manual bridge dispatch to the bridge job. Existing runtime builds and behavior tests remain available for runtime changes or explicit all dispatch. Missing Git history/input fails closed. Bridge-only releases publish versioned ECR/GHCR references without moving latest; full releases retain existing aliases. Add a network-isolated bridge package/actor smoke and local scope/pin tests.
 
+Native OpenClaw invitations download the identical verified archive from npm too, so a Dev API release does not depend on first deploying App production. App retains the matching mirror for compatibility and verification. PR CI builds/smokes the installed bridge package without publication or cloud-agent provisioning.
+
 ## Verification and rollout
 
 Validate archive hashes and manifests, focused/full App and API tests/types, Container pin/scope tests, script syntax and CI. Docker CI must inspect and smoke the installed 0.12.71 package, actor claim and compiled emitters. No real cloud runtime is provisioned by bridge-only CI. Human merges precede the coordinated Dev release. Record exact revisions/digests and rollback; preserve private Compose layers, flags, idle policy and credentials. Deploy only after image/actor compatibility and synthetic checks pass.
 
 New server-created conversations or approved provenance migration are required for legacy data. Do not infer authority from editable metadata or backfill. A real managed-agent E2E requires a known authorized test agent and budget; no private host access, gateway restart, secret/identity logging, automatic private-agent update, QA/Prod promotion, payment activation or public signup in this preparation stage.
-
