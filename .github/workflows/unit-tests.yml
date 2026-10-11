@@ -20,11 +20,19 @@ jobs:
       - name: Release scope and pin regressions
         run: python -m unittest discover -s tests/perkos-a2a-bridge -p 'test_*.py'
       - name: Smoke script syntax
-        run: bash -n tests/perkos-a2a-bridge/smoke.sh
+        run: bash -n tests/perkos-a2a-bridge/smoke.sh scripts/publish-a2a-native.sh
 
   a2a-installed-package:
-    name: A2A image + installed actor smoke (no cloud agents)
-    runs-on: ubuntu-latest
+    name: A2A native image + actor smoke (${{ matrix.arch }}, no cloud agents)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
     steps:
@@ -36,10 +44,51 @@ jobs:
           context: images/perkos-a2a-bridge
           load: true
           push: false
-          platforms: linux/amd64
+          platforms: linux/${{ matrix.arch }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
           tags: perkos-a2a-bridge:test
       - name: Verify installed package and actor emission without external network
         run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.72
+      - name: Export the tested native image
+        env:
+          BRIDGE_ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/bridge-image"
+          cd "$RUNNER_TEMP/bridge-image"
+          docker tag perkos-a2a-bridge:test "perkos-a2a-bridge:test-${BRIDGE_ARCH}"
+          docker save "perkos-a2a-bridge:test-${BRIDGE_ARCH}" | gzip > "bridge-${BRIDGE_ARCH}.tar.gz"
+          sha256sum "bridge-${BRIDGE_ARCH}.tar.gz" > "bridge-${BRIDGE_ARCH}.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-image-${{ matrix.arch }}
+          path: ${{ runner.temp }}/bridge-image/*
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  a2a-native-archive-transfer:
+    name: A2A tested native archive transfer (no publication)
+    needs: a2a-installed-package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bridge-image-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/bridge-images
+      - name: Verify both real image archives through the publisher without registry access
+        env:
+          BRIDGE_VERIFY_ONLY: "true"
+          RELEASE_SCOPE: bridge
+          PERKOS_A2A_VERSION: "0.12.72"
+          BRIDGE_IMAGE_TAG: verify-only
+          BRIDGE_ARTIFACT_DIR: ${{ runner.temp }}/bridge-images
+          ECR_REGISTRY: ecr.example
+          GHCR_ORG: ghcr.example/team
+        run: ./scripts/publish-a2a-native.sh
 
   perkos-tools-python:
     name: perkos_tools.py (Python stdlib)

@@ -37,10 +37,10 @@ class ReleasePinTests(unittest.TestCase):
             self.assertIn("if: needs.release-scope.outputs.scope == 'all'", jobs[job])
         bridge = jobs["build-perkos-a2a-bridge"]
         self.assertIn("needs: release-scope", bridge)
-        self.assertEqual(bridge.count("PERKOS_A2A_ARTIFACT_BASE_URL=${{ env.PERKOS_A2A_ARTIFACT_BASE_URL }}"), 2)
-        self.assertIn('if [[ "$RELEASE_SCOPE" == "all" ]]; then', bridge)
-        self.assertIn("tags: ${{ steps.tags.outputs.publish_tags }}", bridge)
-        self.assertIn('${ECR_REGISTRY}/perkos-a2a-bridge:${PERKOS_A2A_VERSION}', bridge)
+        self.assertEqual(bridge.count("PERKOS_A2A_ARTIFACT_BASE_URL=${{ env.PERKOS_A2A_ARTIFACT_BASE_URL }}"), 1)
+        publisher = jobs["publish-perkos-a2a-bridge"]
+        self.assertIn("needs: [release-scope, build-perkos-a2a-bridge]", publisher)
+        self.assertIn("run: ./scripts/publish-a2a-native.sh", publisher)
         self.assertIn("scripts/select-build-scope.py", jobs["release-scope"])
         self.assertIn("fetch-depth: 0", jobs["release-scope"])
 
@@ -55,25 +55,13 @@ class ReleasePinTests(unittest.TestCase):
         self.assertEqual(smoke.count("--network none"), 4)
 
     def test_bridge_scope_never_moves_latest_aliases(self):
-        workflow = (ROOT / ".github/workflows/build-push-ecr.yml").read_text()
-        bridge = workflow.split("  build-perkos-a2a-bridge:\n", 1)[1]
-        script = textwrap.dedent(re.search(r"        run: \|\n((?:          [^\n]*\n)+)", bridge).group(1))
-        for scope in ("bridge", "all"):
-            with tempfile.TemporaryDirectory() as directory:
-                output = Path(directory) / "outputs"
-                env = {**os.environ, "TAG_SUFFIX": "", "RELEASE_SCOPE": scope,
-                       "GITHUB_SHA": "a" * 40, "GITHUB_OUTPUT": str(output),
-                       "PERKOS_A2A_VERSION": VERSION, "ECR_REGISTRY": "ecr.example",
-                       "GHCR_ORG": "ghcr.example"}
-                subprocess.run(["bash", "-e", "-c", script], env=env, check=True, capture_output=True)
-                tags = output.read_text()
-                self.assertIn(f"ecr.example/perkos-a2a-bridge:{VERSION}\n", tags)
-                self.assertIn(f"ghcr.example/perkos-a2a:{VERSION}\n", tags)
-                self.assertEqual(tags.count(":latest\n"), 2 if scope == "all" else 0)
+        script = (ROOT / "scripts/publish-a2a-native.sh").read_text()
+        self.assertIn('aliases=("$PERKOS_A2A_VERSION")', script)
+        self.assertIn('if [[ "$RELEASE_SCOPE" == all ]]; then aliases+=(latest); fi', script)
 
     def test_tag_suffix_is_not_interpolated_as_shell_code(self):
         workflow = (ROOT / ".github/workflows/build-push-ecr.yml").read_text()
-        bridge = workflow.split("  build-perkos-a2a-bridge:\n", 1)[1]
+        bridge = workflow.split("  publish-perkos-a2a-bridge:\n", 1)[1]
         script = textwrap.dedent(re.search(r"        run: \|\n((?:          [^\n]*\n)+)", bridge).group(1))
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "outputs"

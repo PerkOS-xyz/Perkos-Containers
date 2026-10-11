@@ -12,6 +12,7 @@ on:
       - "images/**"
       - "tests/**"
       - "scripts/select-build-scope.py"
+      - "scripts/publish-a2a-native.sh"
       - "deploy/perkos-assistant/docker-compose.yml"
       - ".github/workflows/build-push-ecr.yml"
       - ".github/workflows/unit-tests.yml"
@@ -407,7 +408,61 @@ jobs:
 
   build-perkos-a2a-bridge:
     needs: release-scope
-    runs-on: ubuntu-latest
+    name: Bridge native build + smoke (${{ matrix.arch }})
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build native bridge (load exact image for testing)
+        uses: docker/build-push-action@v6
+        with:
+          context: images/perkos-a2a-bridge
+          load: true
+          push: false
+          platforms: linux/${{ matrix.arch }}
+          build-args: |
+            PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
+            PERKOS_A2A_SHA256=${{ env.PERKOS_A2A_SHA256 }}
+            PERKOS_A2A_ARTIFACT_BASE_URL=${{ env.PERKOS_A2A_ARTIFACT_BASE_URL }}
+          labels: org.opencontainers.image.revision=${{ github.sha }}
+          tags: perkos-a2a-bridge:test-${{ matrix.arch }}
+      - name: Smoke installed package on native architecture without external network
+        env:
+          BRIDGE_ARCH: ${{ matrix.arch }}
+        run: ./tests/perkos-a2a-bridge/smoke.sh "perkos-a2a-bridge:test-${BRIDGE_ARCH}" "${PERKOS_A2A_VERSION}"
+      - name: Export exactly the tested image
+        env:
+          BRIDGE_ARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/bridge-image"
+          cd "$RUNNER_TEMP/bridge-image"
+          docker save "perkos-a2a-bridge:test-${BRIDGE_ARCH}" | gzip > "bridge-${BRIDGE_ARCH}.tar.gz"
+          sha256sum "bridge-${BRIDGE_ARCH}.tar.gz" > "bridge-${BRIDGE_ARCH}.tar.gz.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bridge-image-${{ matrix.arch }}
+          path: ${{ runner.temp }}/bridge-image/*
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+
+  publish-perkos-a2a-bridge:
+    # A failed/missing native smoke prevents all registry publication.
+    needs: [release-scope, build-perkos-a2a-bridge]
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: perkos-a2a-bridge-publication
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
@@ -426,19 +481,6 @@ jobs:
           [ -n "$SUFFIX" ] && SUFFIX="-${SUFFIX}"
           VERSION="v${PERKOS_A2A_VERSION}-perkos.${DATE}.${SHA}${SUFFIX}"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          # A bridge-only release must not change either runtime's latest alias.
-          {
-            echo "publish_tags<<PERKOS_TAGS"
-            echo "${ECR_REGISTRY}/perkos-a2a-bridge:${VERSION}"
-            echo "${ECR_REGISTRY}/perkos-a2a-bridge:${PERKOS_A2A_VERSION}"
-            echo "${GHCR_ORG}/perkos-a2a:${VERSION}"
-            echo "${GHCR_ORG}/perkos-a2a:${PERKOS_A2A_VERSION}"
-            if [[ "$RELEASE_SCOPE" == "all" ]]; then
-              echo "${ECR_REGISTRY}/perkos-a2a-bridge:latest"
-              echo "${GHCR_ORG}/perkos-a2a:latest"
-            fi
-            echo "PERKOS_TAGS"
-          } >> "$GITHUB_OUTPUT"
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -458,39 +500,18 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # QEMU registers binfmt handlers so the amd64 runner can cross-build
-      # the linux/arm64 variant via emulation.
-      - uses: docker/setup-qemu-action@v3
-
       - uses: docker/setup-buildx-action@v3
-
-      - name: Build perkos-a2a-bridge (load for testing)
-        uses: docker/build-push-action@v6
+      - uses: actions/download-artifact@v4
         with:
-          context: images/perkos-a2a-bridge
-          load: true
-          platforms: linux/amd64
-          build-args: |
-            PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
-            PERKOS_A2A_SHA256=${{ env.PERKOS_A2A_SHA256 }}
-            PERKOS_A2A_ARTIFACT_BASE_URL=${{ env.PERKOS_A2A_ARTIFACT_BASE_URL }}
-          tags: perkos-a2a-bridge:test
-
-      - name: Smoke test perkos-a2a-bridge
-        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test "${PERKOS_A2A_VERSION}"
-
-      - name: Build + push perkos-a2a-bridge
-        uses: docker/build-push-action@v6
-        with:
-          context: images/perkos-a2a-bridge
-          push: true
-          platforms: linux/amd64,linux/arm64
-          build-args: |
-            PERKOS_A2A_VERSION=${{ env.PERKOS_A2A_VERSION }}
-            PERKOS_A2A_SHA256=${{ env.PERKOS_A2A_SHA256 }}
-            PERKOS_A2A_ARTIFACT_BASE_URL=${{ env.PERKOS_A2A_ARTIFACT_BASE_URL }}
-          labels: org.opencontainers.image.revision=${{ github.sha }}
-          tags: ${{ steps.tags.outputs.publish_tags }}
+          pattern: bridge-image-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/bridge-images
+      - name: Publish tested native images and verify both OCI indexes
+        env:
+          BRIDGE_IMAGE_TAG: ${{ steps.tags.outputs.version }}
+          RELEASE_SCOPE: ${{ needs.release-scope.outputs.scope }}
+          BRIDGE_ARTIFACT_DIR: ${{ runner.temp }}/bridge-images
+        run: ./scripts/publish-a2a-native.sh
 
   # Behavior test: provision an ephemeral agent from each freshly-pushed
   # image, send canonical prompts (incl. a PM/plan-and-delegate prompt that
