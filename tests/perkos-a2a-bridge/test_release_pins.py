@@ -7,8 +7,8 @@ import textwrap
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-VERSION = "0.12.71"
-SHA256 = "69a38789fc89075aa377d49b9b33408a3af82d3187f950d70f8c84261ddfd982"
+VERSION = "0.12.72"
+SHA256 = "8ca6552cc3f03ce2e57958159900ffd7f0298f04a9e58d356188137a94941647"
 BASE_URL = "https://registry.npmjs.org/@perkos/perkos-a2a/-"
 
 

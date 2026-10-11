@@ -48,7 +48,7 @@ jobs:
           labels: org.opencontainers.image.revision=${{ github.sha }}
           tags: perkos-a2a-bridge:test
       - name: Verify installed package and actor emission without external network
-        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.71
+        run: ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.72
       - name: Export the tested native image
         env:
           BRIDGE_ARCH: ${{ matrix.arch }}
@@ -83,7 +83,7 @@ jobs:
         env:
           BRIDGE_VERIFY_ONLY: "true"
           RELEASE_SCOPE: bridge
-          PERKOS_A2A_VERSION: "0.12.71"
+          PERKOS_A2A_VERSION: "0.12.72"
           BRIDGE_IMAGE_TAG: verify-only
           BRIDGE_ARTIFACT_DIR: ${{ runner.temp }}/bridge-images
           ECR_REGISTRY: ecr.example

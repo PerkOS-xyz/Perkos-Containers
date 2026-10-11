@@ -28,6 +28,8 @@ FROM node:22-alpine
 # of time, so the dispatcher retries instead of waiting for the task claim.
 # 0.12.71 binds Tools JWTs to the authenticated agent actor, independently
 # of editable conversation/task metadata.
+# 0.12.72 lets platform tools in a private chat mint a token for the
+# conversation being answered (convId "current"), only when exactly one is.
 # 0.12.57 routes ZeroClaw through the HTTP delivery path in every entry point;
 # 0.12.56 reached only three of the four gates, so the agent connected and then
 # failed every task.
@@ -58,8 +60,8 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.71
-ARG PERKOS_A2A_SHA256=69a38789fc89075aa377d49b9b33408a3af82d3187f950d70f8c84261ddfd982
+ARG PERKOS_A2A_VERSION=0.12.72
+ARG PERKOS_A2A_SHA256=8ca6552cc3f03ce2e57958159900ffd7f0298f04a9e58d356188137a94941647
 ARG PERKOS_A2A_ARTIFACT_BASE_URL=https://registry.npmjs.org/@perkos/perkos-a2a/-
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle

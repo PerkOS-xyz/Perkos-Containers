@@ -17,8 +17,8 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 REVISION = "a" * 40
-VERSION = "0.12.71"
-TAG = "v0.12.71-perkos.2026.10.11.aaaaaaa"
+VERSION = "0.12.72"
+TAG = "v0.12.72-perkos.2026.10.11.aaaaaaa"
 
 FAKE_DOCKER = r'''#!/usr/bin/env python3
 import json, os, sys
@@ -56,7 +56,7 @@ elif args[:3] == ["buildx", "imagetools", "inspect"]:
         if mode == "index-parity" and not child and ref.startswith("ghcr.example"):
             digest = "sha256:" + "d" * 64
         if mode == "invalid-digest": digest = "not-a-digest"
-        if mode == "alias-mismatch" and ref.endswith(":0.12.71"):
+        if mode == "alias-mismatch" and ref.endswith(":0.12.72"):
             digest = "sha256:" + "d" * 64
         print(digest)
 elif args[:1] == ["push"] and mode == "push-fails":
@@ -111,7 +111,7 @@ class NativeWorkflowTests(unittest.TestCase):
             env = {**os.environ, "TAG_SUFFIX": "rc1", "RELEASE_SCOPE": "bridge",
                    "GITHUB_SHA": REVISION, "GITHUB_OUTPUT": str(output), "PERKOS_A2A_VERSION": VERSION}
             subprocess.run(["bash", "-e", "-c", script], env=env, check=True, capture_output=True)
-            self.assertRegex(output.read_text(), r"^version=v0\.12\.71-perkos\.\d{4}\.\d{2}\.\d{2}\.aaaaaaa-rc1\n$")
+            self.assertRegex(output.read_text(), r"^version=v0\.12\.72-perkos\.\d{4}\.\d{2}\.\d{2}\.aaaaaaa-rc1\n$")
 
 
 @unittest.skipUnless(shutil.which("jq") and shutil.which("sha256sum"), "requires jq and sha256sum")
