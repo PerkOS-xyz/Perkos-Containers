@@ -12,6 +12,7 @@ BRIDGE_FILES = frozenset({
     ".github/workflows/unit-tests.yml",
     "deploy/perkos-assistant/docker-compose.yml",
     "scripts/select-build-scope.py",
+    "scripts/publish-a2a-native.sh",
     "docs/plans/2026-10-11-a2a-consumer-release-design.md",
 })
 
