@@ -26,6 +26,8 @@ FROM node:22-alpine
 # and the tools JWT; earlier versions lowercased it and broke Solana accounts.
 # 0.12.70 reports a queued relay task's outcome when a runtime turn runs out
 # of time, so the dispatcher retries instead of waiting for the task claim.
+# 0.12.71 binds Tools JWTs to the authenticated agent actor, independently
+# of editable conversation/task metadata.
 # 0.12.57 routes ZeroClaw through the HTTP delivery path in every entry point;
 # 0.12.56 reached only three of the four gates, so the agent connected and then
 # failed every task.
@@ -56,8 +58,9 @@ FROM node:22-alpine
 # 0.12.13 carries the agent's SOUL to Hermes as request-level `instructions`
 # (PERKOS_AGENT_SOUL_B64) so multi-agent co-residents reply in-persona even
 # though the Hermes api_server platform isn't multiplex-aware.
-ARG PERKOS_A2A_VERSION=0.12.70
-ARG PERKOS_A2A_SHA256=913e73b9e8140d2577727dc1a4db36c0bb78c7f0303ac85bc307717b72ec33e3
+ARG PERKOS_A2A_VERSION=0.12.71
+ARG PERKOS_A2A_SHA256=69a38789fc89075aa377d49b9b33408a3af82d3187f950d70f8c84261ddfd982
+ARG PERKOS_A2A_ARTIFACT_BASE_URL=https://registry.npmjs.org/@perkos/perkos-a2a/-
 
 # tini for proper signal forwarding (perkos-a2a-agent doesn't handle
 # SIGTERM gracefully without an init); ca-certificates because alpine
@@ -69,7 +72,7 @@ ARG PERKOS_A2A_SHA256=913e73b9e8140d2577727dc1a4db36c0bb78c7f0303ac85bc307717b72
 RUN apk add --no-cache tini ca-certificates && \
     apk add --no-cache --virtual .a2a-build git && \
     wget -q -O /tmp/perkos-a2a.tgz \
-      "https://perkos.xyz/artifacts/perkos-a2a-${PERKOS_A2A_VERSION}.tgz" && \
+      "${PERKOS_A2A_ARTIFACT_BASE_URL}/perkos-a2a-${PERKOS_A2A_VERSION}.tgz" && \
     echo "${PERKOS_A2A_SHA256}  /tmp/perkos-a2a.tgz" | sha256sum -c - && \
     mkdir -p /opt/perkos-a2a && cd /opt/perkos-a2a && \
     npm install --omit=dev --no-audit --no-fund /tmp/perkos-a2a.tgz && \

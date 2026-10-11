@@ -10,18 +10,18 @@
 #     the binary is launchable + env-driven config doesn't bail at parse
 #     time)
 #
-# This is intentionally less strict than the Hermes smoke test — the
-# bridge is a passive forwarder, so end-to-end validation requires real
-# chat.perkos.xyz + transport.perkos.xyz access which isn't available
-# from GitHub CI runners on the company network. Full integration check
-# happens on the LLM VPS after deploy.
+# Also verifies the installed package version and local HTTP actor emission
+# with synthetic data. All containers have no external network; this does
+# not replace a coordinated Dev chat/Tools integration test.
 #
 # Usage:
-#   ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test
+#   ./tests/perkos-a2a-bridge/smoke.sh perkos-a2a-bridge:test 0.12.71
 
 set -uo pipefail
 
 IMAGE="${1:-perkos-a2a-bridge:test}"
+EXPECTED_VERSION="${2:-0.12.71}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINER="perkos-a2a-bridge-smoke-$$"
 
 cleanup() {
@@ -39,16 +39,25 @@ pass() { echo "✅ $1"; }
 
 # --- Binary presence ---
 echo "▶ checking perkos-a2a-agent is on PATH in $IMAGE ..."
-if docker run --rm --entrypoint sh "$IMAGE" -c 'command -v perkos-a2a-agent >/dev/null'; then
+if docker run --rm --network none --entrypoint sh "$IMAGE" -c 'command -v perkos-a2a-agent >/dev/null && command -v perkos-a2a-bridge >/dev/null'; then
   pass "perkos-a2a-agent binary present"
 else
   fail "perkos-a2a-agent not on PATH — npm install layer broken"
 fi
 
-if docker run --rm --entrypoint sh "$IMAGE" -c 'command -v node >/dev/null'; then
+if docker run --rm --network none --entrypoint sh "$IMAGE" -c 'command -v node >/dev/null'; then
   pass "node runtime present"
 else
   fail "node runtime missing"
+fi
+
+if docker run --rm --network none --entrypoint node \
+  -e EXPECTED_A2A_VERSION="$EXPECTED_VERSION" \
+  -v "$SCRIPT_DIR/verify-package.mjs:/tmp/verify-package.mjs:ro" \
+  "$IMAGE" /tmp/verify-package.mjs; then
+  pass "installed package and Tools actor contract verified"
+else
+  fail "installed package or Tools actor contract mismatch"
 fi
 
 # --- Config parse smoke ---
@@ -57,7 +66,7 @@ fi
 # to be HEALTHY (no Hermes to reach + no real chat key), only that it
 # survives the config parse + initial server bind.
 echo "▶ booting $IMAGE with mocked env ..."
-docker run -d --name "$CONTAINER" \
+docker run -d --network none --name "$CONTAINER" \
   -e A2A_AGENT_NAME=smoke-test \
   -e A2A_RELAY_API_KEY=dummy-key \
   -e HERMES_API_URL=http://invalid-host:8642 \
