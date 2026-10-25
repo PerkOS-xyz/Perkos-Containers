@@ -309,8 +309,10 @@ if run_container perkos-openclaw-smoke-multiagent-$$ \
   # The agents.list patch is a LATE entrypoint step — wait for it before the
   # follow-on single-shot checks (fixes the pre-existing race where the smoke
   # asserted agents.list before the co-resident render had run).
-  wait_jq "multi-agent: agents.list has 4 agents (primary + 3 co-resident)" '.agents.list | length == 4'
-  if docker exec "$CONTAINER" sh -c "jq -e '[.agents.list[] | select(.default==true)] | length == 1' $CFG" >/dev/null 2>&1; then
+  # OpenClaw >= 2026.10 uses keyed agents.entries; older builds use agents.list.
+  AGENTS_JQ='(if .agents.entries then [.agents.entries | to_entries[] | .value + {id: .key}] else .agents.list end)'
+  wait_jq "multi-agent: config has 4 agents (primary + 3 co-resident)" "$AGENTS_JQ | length == 4"
+  if docker exec "$CONTAINER" sh -c "jq -e 'if .agents.entries then (.agents.defaults.systemAgent.agentId as \$d | .agents.entries | has(\$d)) else ([.agents.list[] | select(.default==true)] | length == 1) end' $CFG" >/dev/null 2>&1; then
     pass "multi-agent: exactly one default agent (the primary)"
   else fail "multi-agent: default-agent count != 1"; fi
   if docker exec "$CONTAINER" test -f /home/node/.openclaw/workspace-researcher/AGENTS.md 2>/dev/null; then
@@ -326,17 +328,17 @@ if run_container perkos-openclaw-smoke-multiagent-$$ \
   if docker exec "$CONTAINER" sh -c "jq -e '.models.providers[\"perkos-scout\"].apiKey == \"pllm-scout-own-key\"' $CFG" >/dev/null 2>&1; then
     pass "multi-agent: scout has own-key provider perkos-scout with its key"
   else fail "multi-agent: scout own-key provider missing/wrong key"; fi
-  if docker exec "$CONTAINER" sh -c "jq -e '(.agents.list[] | select(.id==\"scout\").model.primary) | startswith(\"perkos-scout/\")' $CFG" >/dev/null 2>&1; then
+  if docker exec "$CONTAINER" sh -c "jq -e '($AGENTS_JQ[] | select(.id==\"scout\").model.primary) | startswith(\"perkos-scout/\")' $CFG" >/dev/null 2>&1; then
     pass "multi-agent: scout agent model routes to its own-key provider"
   else fail "multi-agent: scout model does not point at perkos-scout"; fi
-  if docker exec "$CONTAINER" sh -c "jq -e '(.agents.list[] | select(.id==\"researcher\") | has(\"model\")) == false' $CFG" >/dev/null 2>&1; then
+  if docker exec "$CONTAINER" sh -c "jq -e '($AGENTS_JQ[] | select(.id==\"researcher\") | has(\"model\")) == false' $CFG" >/dev/null 2>&1; then
     pass "multi-agent: keyless researcher inherits agents.defaults (no model override)"
   else fail "multi-agent: keyless co-resident wrongly got a model override"; fi
   sleep 10
   mp_state=$(docker inspect "$CONTAINER" --format '{{.State.Status}}' 2>/dev/null || echo missing)
   mp_restarts=$(docker inspect "$CONTAINER" --format '{{.RestartCount}}' 2>/dev/null || echo 0)
   if [ "$mp_state" = "running" ] && [ "$mp_restarts" -eq 0 ]; then
-    pass "multi-agent: gateway stable with agents.list (state=$mp_state restarts=$mp_restarts)"
+    pass "multi-agent: gateway stable with co-resident agents (state=$mp_state restarts=$mp_restarts)"
   else fail "multi-agent: gateway NOT stable (state=$mp_state restarts=$mp_restarts)"; fi
 fi
 
