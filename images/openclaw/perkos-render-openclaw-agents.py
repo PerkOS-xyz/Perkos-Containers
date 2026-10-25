@@ -26,6 +26,10 @@ import sys
 
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 MAX_PROFILES = 32
+# OpenClaw 2026.10 moved `agents.list[]` to a keyed `agents.entries` map and
+# rejects the list form at boot. Its legacy-config migration carries this text,
+# which is how we tell which shape the installed OpenClaw expects.
+KEYED_ENTRIES_MARKER = "moved to keyed agents.entries"
 
 
 def norm_id(value, fallback):
@@ -122,6 +126,40 @@ def build_agents_list(primary, profiles, base_ws, model_refs=None):
     return entries, writes
 
 
+def openclaw_uses_keyed_entries(app_dir):
+    """True when the OpenClaw installed in app_dir expects `agents.entries`."""
+    dist = os.path.join(app_dir, "dist")
+    try:
+        names = [n for n in os.listdir(dist) if n.startswith("legacy") and n.endswith(".mjs")]
+    except OSError:
+        return False
+    for name in names:
+        try:
+            with open(os.path.join(dist, name), "r", encoding="utf-8", errors="ignore") as f:
+                if KEYED_ENTRIES_MARKER in f.read():
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def to_keyed_entries(entries):
+    """Pure: agents.list entries -> (agents.entries map, default agent id).
+
+    The keyed form has no per-entry `default` marker; the default agent is named
+    by `agents.defaults.heartbeat.agentId` / `systemAgent.agentId` instead.
+    """
+    keyed = {}
+    default_id = None
+    for entry in entries:
+        item = dict(entry)
+        aid = item.pop("id")
+        if item.pop("default", False) and default_id is None:
+            default_id = aid
+        keyed[aid] = item
+    return keyed, default_id
+
+
 def main():
     cfg_path = os.environ.get("OPENCLAW_CONFIG_PATH", "")
     if not cfg_path or not os.path.isfile(cfg_path):
@@ -168,7 +206,20 @@ def main():
 
     entries, writes = build_agents_list(primary, profiles, base_ws, model_refs)
 
-    cfg.setdefault("agents", {})["list"] = entries
+    agents = cfg.setdefault("agents", {})
+    if openclaw_uses_keyed_entries(os.environ.get("OPENCLAW_APP_DIR", "/app")):
+        keyed, default_id = to_keyed_entries(entries)
+        agents.pop("list", None)
+        agents["entries"] = keyed
+        agents["ownership"] = "explicit"
+        if default_id:
+            defaults = agents.setdefault("defaults", {})
+            defaults.setdefault("heartbeat", {})["agentId"] = default_id
+            defaults.setdefault("systemAgent", {})["agentId"] = default_id
+        shape = "agents.entries"
+    else:
+        agents["list"] = entries
+        shape = "agents.list"
     if key_providers:
         cfg.setdefault("models", {}).setdefault("providers", {}).update(key_providers)
     with open(cfg_path, "w", encoding="utf-8") as f:
@@ -183,7 +234,7 @@ def main():
             print(f"perkos-render-openclaw: AGENTS.md write failed for {aid} ({e})")
 
     print(
-        f"perkos-render-openclaw: agents.list = {len(entries)} agents "
+        f"perkos-render-openclaw: {shape} = {len(entries)} agents "
         f"(primary + {len(entries) - 1} co-resident); {len(key_providers)} own-key provider(s)"
     )
     sys.exit(0)
