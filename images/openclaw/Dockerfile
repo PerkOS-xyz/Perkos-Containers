@@ -30,6 +30,25 @@ ARG OPENCLAW_VERSION=
 
 USER root
 
+# Node comes from the upstream image, which can lag a Node security release
+# (e.g. CVE-2026-111497, fixed 2026-10-21). Replace it with the latest official
+# patch of the same major, verified against nodejs.org SHASUMS256, so every
+# build of this image ships the current patch.
+RUN set -eu; \
+    apt-get update; \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends curl xz-utils ca-certificates; \
+    major="$(node -p 'process.versions.node.split(".")[0]')"; \
+    case "$(uname -m)" in x86_64) arch=x64 ;; aarch64) arch=arm64 ;; *) echo "unsupported arch $(uname -m)"; exit 1 ;; esac; \
+    base="https://nodejs.org/dist/latest-v${major}.x"; \
+    curl -fsSLo /tmp/SHASUMS256.txt "$base/SHASUMS256.txt"; \
+    file="$(awk -v f="linux-${arch}.tar.xz" '$2 ~ (f "$") {print $2}' /tmp/SHASUMS256.txt)"; \
+    curl -fsSLo "/tmp/$file" "$base/$file"; \
+    (cd /tmp && grep " $file\$" SHASUMS256.txt | sha256sum -c -); \
+    tar -xJf "/tmp/$file" -C /tmp "${file%.tar.xz}/bin/node"; \
+    install -m 0755 "/tmp/${file%.tar.xz}/bin/node" "$(command -v node)"; \
+    rm -rf "/tmp/$file" "/tmp/${file%.tar.xz}" /tmp/SHASUMS256.txt /var/lib/apt/lists/*; \
+    node -v
+
 # tini is already in the upstream image. jq powers the entrypoint template
 # substitution; the AWS CLI + openssl + bash drive the hibernation
 # snapshot/restore scripts (client-side encrypted state backup to S3).
